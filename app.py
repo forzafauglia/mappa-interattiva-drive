@@ -5,7 +5,7 @@ from streamlit_folium import folium_static
 
 st.set_page_config(page_title="Mappa Interattiva", layout="wide")
 
-# URL pubblico del Google Sheet in formato CSV
+# URL CSV pubblico del Google Sheet
 sheet_url = (
     "https://docs.google.com/spreadsheets/"
     "d/1G4cJPBAYdb8Xv-mHNX3zmVhsz6FqWf_zE14mBXcs5_A/gviz/tq?tqx=out:csv"
@@ -18,25 +18,30 @@ def load_data():
 
 df = load_data()
 
-# ?? Mostra i nomi delle colonne per verificare quelli corretti
+# ?? Mostra nomi colonne per aiutarti
 st.sidebar.write("?? Colonne trovate:", df.columns.tolist())
 
-# Qui inserisci i nomi delle colonne esatti come appaiono:
-col_coord = "Coordinate"  # es. la colonna con "(lat, lon)"
-col_colore = "Colore"     # es. la colonna con ROSSO/GIALLO ecc.
+# ?? Trova nomi delle colonne anche se scritti in modo strano
+def trova_colonna(parziale):
+    for col in df.columns:
+        if parziale.lower() in col.lower():
+            return col
+    return None
 
-if col_coord not in df.columns or col_colore not in df.columns:
-    st.error(f"Le colonne '{col_coord}' o '{col_colore}' non sono state trovate.\n"
-             "Controlla i nomi esatti sulla sidebar sopra.")
+col_coord = trova_colonna("coord")     # ad esempio: "Coordinate"
+col_colore = trova_colonna("colore")   # ad esempio: "Colore"
+
+if not col_coord or not col_colore:
+    st.error(f"? Colonne con coordinate o colore non trovate. Controlla i nomi nel Google Sheet.")
     st.stop()
 
-# Filtra righe con coordinate
+# Pulisce i dati con coordinate valide
 df = df[df[col_coord].notna()]
 
-# Crea la mappa centrata sulla Toscana
+# Mappa centrata sulla Toscana
 mappa = folium.Map(location=[43.5, 11.0], zoom_start=8)
 
-# Funzione che assegna il colore al marker
+# Colori personalizzati
 def colore_marker(val):
     val = val.strip().upper() if isinstance(val, str) else ""
     return {
@@ -46,20 +51,19 @@ def colore_marker(val):
         "VERDE": "green"
     }.get(val, "gray")
 
-# Aggiungi marker correttamente
+# Marker
 for _, row in df.iterrows():
     try:
         lat_lon = row[col_coord]
-        lat, lon = [float(x) for x in lat_lon.strip("()").split(",")]
+        lat, lon = [float(x) for x in lat_lon.strip("() ").split(",")]
         colore = colore_marker(row[col_colore])
         
-        # Costruzione del popup con le colonne da A ad AE
         popup_html = ""
-        for col in df.columns[:31]:
+        for col in df.columns[:31]:  # Colonne da A ad AE
             val = row[col]
             if pd.notna(val):
                 popup_html += f"<b>{col}</b>: {val}<br>"
-        
+
         folium.CircleMarker(
             location=[lat, lon],
             radius=6,
@@ -71,6 +75,6 @@ for _, row in df.iterrows():
     except Exception:
         continue
 
-# **Titolo e visualizzazione della mappa**
-st.title("??? Mappa Interattiva – Google Sheets ? Streamlit")
+# Titolo e mappa
+st.title("??? Mappa Interattiva – aggiornata da Google Sheets")
 folium_static(mappa, width=1000, height=700)
