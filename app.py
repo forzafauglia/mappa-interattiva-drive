@@ -103,7 +103,7 @@ def get_marker_color(val):
     val = str(val).strip().upper()
     return {
         "ROSSO": "red",
-        "GIALLO": "orange",
+        "GIALLO": "yellow",
         "ARANCIONE": "darkorange",
         "VERDE": "green"
     }.get(val, "gray") # Grigio di default se il colore non è riconosciuto
