@@ -110,5 +110,5 @@ if markers_added == 0:
     st.sidebar.error("Nessun marker è stato aggiunto. Controlla il formato delle colonne 'X' e 'Y' nel Google Sheet. Devono essere numeri validi (es. 43,123 o 11.456).")
 
 # Titolo e visualizzazione della mappa
-st.title("🗺️ Mappa Interattiva – aggiornata da Google Sheets")
+st.title("🗺️ Mappa Interattiva – by Bobo")
 folium_static(mappa, width=1000, height=700)
