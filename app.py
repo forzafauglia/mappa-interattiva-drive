@@ -1,28 +1,18 @@
 import streamlit as st
 import pandas as pd
 
-st.set_page_config(page_title="Diagnostica Google Sheet", layout="wide")
-
-# URL del tuo Google Sheet come CSV
-sheet_url = "https://docs.google.com/spreadsheets/d/1G4cJPBAYdb8Xv-mHNX3zmVhsz6FqWf_zE14mBXcs5_A/gviz/tq?tqx=out:csv"
-
-@st.cache_data(ttl=3600)
+@st.cache_data
 def load_data():
-    return pd.read_csv(sheet_url)
+    # Inserisci qui il tuo URL pubblico (non quello di editing)
+    url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRxUEnVC0Z96lXZ0oSzHpMFdhwFMxiXCSZLb3yo06Fl5A5wB5aJJePSkzO9M9Ju5FRHbck-uLeN6tI7/pub?gid=0&single=true&output=csv"
+    df = pd.read_csv(url)
+    return df
 
-# App principale
-st.title("🔍 Diagnostica colonne del Google Sheet")
+df = load_data()
 
-try:
-    df = load_data()
+st.title("🧪 Diagnostica Google Sheet")
+st.write("Prime 5 righe del foglio:")
+st.dataframe(df.head())
 
-    st.success("✅ Dati caricati correttamente!")
-    st.subheader("📌 Prime 5 righe del foglio:")
-    st.dataframe(df.head())
-
-    st.subheader("📋 Elenco delle colonne:")
-    for i, col in enumerate(df.columns):
-        st.markdown(f"**{i+1}.** `{col}`")
-except Exception as e:
-    st.error("❌ Errore durante il caricamento o la visualizzazione del foglio.")
-    st.exception(e)
+st.write("Colonne riconosciute:")
+st.write(df.columns.tolist())
