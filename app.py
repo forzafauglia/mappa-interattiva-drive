@@ -5,15 +5,14 @@ from streamlit_folium import folium_static
 
 st.set_page_config(page_title="Mappa Interattiva", layout="wide")
 
-# URL CSV pubblico del Google Sheet (lo stesso di prima)
 SHEET_URL = (
     "https://docs.google.com/spreadsheets/"
     "d/1G4cJPBAYdb8Xv-mHNX3zmVhsz6FqWf_zE14mBXcs5_A/gviz/tq?tqx=out:csv"
 )
 
-# --- MODIFICA 1: Usiamo i nomi ESATTI dal tuo file ---
-# Questi sono i nomi corretti delle colonne, copiati dal tuo file.
-COL_COORD = "COORDINATE GOOGLE MAPS"
+# --- MODIFICA CHIAVE: Usiamo le colonne X e Y che sono più pulite ---
+COL_LAT = "Y"  # Colonna con la Latitudine
+COL_LON = "X"  # Colonna con la Longitudine
 COL_COLORE = "COLORE"
 
 
@@ -21,14 +20,8 @@ COL_COLORE = "COLORE"
 def load_data():
     """Carica e pulisce i dati dal Google Sheet."""
     try:
-        # --- MODIFICA 2: Gestione robusta dei dati ---
-        # Aggiungiamo 'na_values' per dire a pandas di considerare "#N/D" come un valore vuoto.
-        df = pd.read_csv(SHEET_URL, na_values=["#N/D"])
-        
-        # Pulisce i nomi delle colonne da eventuali spazi bianchi all'inizio o alla fine.
-        # Es: " COLORE " diventa "COLORE"
+        df = pd.read_csv(SHEET_URL, na_values=["#N/D", "#N/A"])
         df.columns = df.columns.str.strip()
-        
         return df
     except Exception as e:
         st.error(f"Impossibile caricare i dati dal Google Sheet. Errore: {e}")
@@ -43,17 +36,18 @@ if df.empty:
 # 🔎 Mostra nomi colonne per aiutarti nel debug
 st.sidebar.write("✅ Colonne lette dal foglio:", df.columns.tolist())
 
-# Controlliamo se le colonne definite esistono nel DataFrame caricato.
-if COL_COORD not in df.columns or COL_COLORE not in df.columns:
+# Controlliamo se le colonne definite esistono
+required_cols = [COL_LAT, COL_LON, COL_COLORE]
+if not all(col in df.columns for col in required_cols):
     st.error(
         f"❌ Colonne necessarie non trovate! "
         f"Assicurati che nel Google Sheet esistano esattamente le colonne: "
-        f"'{COL_COORD}' e '{COL_COLORE}'."
+        f"'{COL_LAT}', '{COL_LON}' e '{COL_COLORE}'."
     )
     st.stop()
 
-# Pulisce i dati, mantenendo solo le righe con coordinate valide e non vuote
-df.dropna(subset=[COL_COORD], inplace=True)
+# Pulisce i dati, mantenendo solo le righe con coordinate valide
+df.dropna(subset=[COL_LAT, COL_LON], inplace=True)
 
 # Mappa centrata sulla Toscana
 mappa = folium.Map(location=[43.5, 11.0], zoom_start=8)
@@ -67,14 +61,25 @@ def get_marker_color(val):
         "VERDE": "green"
     }.get(val, "gray")
 
-# Itera sulle righe per aggiungere i marker
+# --- MODIFICA CICLO: Leggiamo da X e Y e gestiamo le virgole decimali ---
+markers_added = 0
 for _, row in df.iterrows():
     try:
-        lat_lon_str = row[COL_COORD]
-        # La virgola nei numeri (es. "43,123") può dare problemi.
-        # Sostituiamo la virgola del decimale con il punto.
-        lat_lon_str = lat_lon_str.replace(',', '.', 1) # Sostituisce solo la prima occorrenza (separatore decimale)
-        lat, lon = [float(x.strip()) for x in lat_lon_str.split(',')] # Splitta su un'altra virgola (separatore coordinate)
+        # 1. Prendi i valori dalle colonne X e Y
+        lat_str = str(row[COL_LAT])
+        lon_str = str(row[COL_LON])
+
+        # 2. Sostituisci la virgola decimale con il punto
+        lat_str_pulita = lat_str.replace(',', '.')
+        lon_str_pulita = lon_str.replace(',', '.')
+
+        # 3. Converti in numeri float
+        lat = float(lat_str_pulita)
+        lon = float(lon_str_pulita)
+
+        # Controlla che le coordinate siano in un range valido per la Toscana
+        if not (42 < lat < 45 and 9 < lon < 13):
+            continue # Salta coordinate palesemente fuori zona
 
         colore = get_marker_color(row[COL_COLORE])
         
@@ -92,10 +97,17 @@ for _, row in df.iterrows():
             fill_opacity=0.9,
             popup=folium.Popup(popup_html, max_width=350)
         ).add_to(mappa)
-    except (ValueError, IndexError, AttributeError):
-        # Ignora le righe con coordinate formattate male (es. vuote, testo, #N/D)
-        # L'AttributeError gestisce il caso in cui lat_lon_str non sia una stringa.
+        markers_added += 1
+
+    except (ValueError, TypeError):
+        # Ignora le righe che non possono essere convertite in numeri,
+        # anche dopo la pulizia.
         continue
+
+# Aggiungi un messaggio di debug nella sidebar
+st.sidebar.success(f"🎉 Aggiunti {markers_added} marker sulla mappa.")
+if markers_added == 0:
+    st.sidebar.error("Nessun marker è stato aggiunto. Controlla il formato delle colonne 'X' e 'Y' nel Google Sheet. Devono essere numeri validi (es. 43,123 o 11.456).")
 
 # Titolo e visualizzazione della mappa
 st.title("🗺️ Mappa Interattiva – aggiornata da Google Sheets")
