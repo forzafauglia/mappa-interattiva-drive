@@ -2,133 +2,127 @@ import streamlit as st
 import pandas as pd
 import folium
 from streamlit_folium import folium_static
-import streamlit.components.v1 as components
-import matplotlib.cm as cm
-import matplotlib.colors as colors
+from datetime import datetime
 
-# --- 1. FUNZIONE PER GOOGLE ANALYTICS ---
-def inject_ga():
-    GA_MEASUREMENT_ID = st.secrets.get("ga_measurement_id", "")
-    if GA_MEASUREMENT_ID:
-        GA_SCRIPT = f"""
-            <script async src="https://www.googletagmanager.com/gtag/js?id={GA_MEASUREMENT_ID}"></script>
-            <script>
-              window.dataLayer = window.dataLayer || [];
-              function gtag(){{dataLayer.push(arguments);}}
-              gtag('js', new Date());
-              gtag('config', '{GA_MEASUREMENT_ID}');
-            </script>
-        """
-        components.html(GA_SCRIPT, height=0)
+# --- 1. FUNZIONE DI CONTROLLO PASSWORD ---
+def check_password():
+    """Restituisce True se l'utente è autenticato, altrimenti False."""
+    def password_entered():
+        if st.session_state["password"] == st.secrets["password"]:
+            st.session_state["password_correct"] = True
+            del st.session_state["password"]
+        else:
+            st.session_state["password_correct"] = False
+    if "password_correct" not in st.session_state:
+        st.session_state["password_correct"] = False
+    if not st.session_state["password_correct"]:
+        st.text_input(
+            "Inserisci la password per accedere:",
+            type="password",
+            on_change=password_entered,
+            key="password",
+        )
+        if st.session_state["password_correct"] is False and "password" in st.session_state and st.session_state["password"] != "":
+             st.error("😕 Password errata. Riprova.")
+        st.stop()
+    return True
 
-# --- 2. CONFIGURAZIONE E TITOLO ---
-st.set_page_config(page_title="Analisi Piogge", layout="wide")
-inject_ga()
-st.title("💧 Analisi Precipitazioni – by Bobo56043 💧")
+# --- Contatore di Visualizzazioni ---
+@st.cache_resource
+def get_view_counter():
+    return {"count": 0}
+counter = get_view_counter()
+counter["count"] += 1
 
-# --- 3. CARICAMENTO E PREPARAZIONE DATI ---
+# Esegui il controllo della password
+check_password()
+
+# --- 2. IL CODICE DELLA TUA APP ---
+st.set_page_config(page_title="Mappa Funghi Protetta", layout="wide")
+
+# --- MODIFICA RIPRISTINATA: Il tuo titolo originale ---
+st.title("🗺️ Mappa Interattiva – by Bobo")
+
+# --- Caricamento Dati ---
 SHEET_URL = (
     "https://docs.google.com/spreadsheets/"
     "d/1G4cJPBAYdb8Xv-mHNX3zmVhsz6FqWf_zE14mBXcs5_A/gviz/tq?tqx=out:csv"
 )
+COL_LAT = "Y"
+COL_LON = "X"
+COL_COLORE = "COLORE"
 
 @st.cache_data(ttl=3600)
 def load_data():
-    df = pd.read_csv(SHEET_URL, na_values=["#N/D", "#N/A"])
-    df.columns = df.columns.str.strip()
-    return df
+    try:
+        df = pd.read_csv(SHEET_URL, na_values=["#N/D", "#N/A"])
+        df.columns = df.columns.str.strip()
+        df.attrs['last_loaded'] = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+        return df
+    except Exception as e:
+        st.error(f"Impossibile caricare i dati dal Google Sheet. Errore: {e}")
+        return pd.DataFrame()
 
-try:
-    df = load_data()
-except Exception as e:
-    st.error(f"Errore durante il caricamento dei dati: {e}")
+df = load_data()
+
+if df.empty:
+    st.warning("Il DataFrame è vuoto o non è stato possibile caricarlo.")
     st.stop()
 
-COLS_TO_SHOW_NAMES = [
-    'COMUNE', 'ALTITUDINE', 'LEGENDA', 'SBALZO TERMICO MIGLIORE', 
-    'PIOGGE RESIDUA', 'Piogge entro 5 gg', 'Piogge entro 10 gg', 
-    'Totale Piogge Mensili', 'MEDIA PORCINI CALDO BASE'
-]
-COL_PIOGGIA = 'Piogge entro 5 gg'
+# --- Informazioni nella Sidebar ---
+st.sidebar.title("Informazioni")
+st.sidebar.write("✅ Colonne lette:", df.columns.tolist())
+st.sidebar.success(f"Aggiunti {len(df.dropna(subset=[COL_LAT, COL_LON]))} marker sulla mappa.")
+st.sidebar.markdown("---")
+st.sidebar.subheader("Statistiche")
+st.sidebar.info(f"Visite totali: **{counter['count']}**")
+if 'last_loaded' in df.attrs:
+    st.sidebar.info(f"Dati aggiornati il: **{df.attrs['last_loaded']}**")
 
-# --- NUOVA SOLUZIONE DEFINITIVA ---
-def pulisci_e_converti_numero(valore):
-    if pd.isna(valore):
-        return None
-    try:
-        return float(str(valore).replace(',', '.'))
-    except (ValueError, TypeError):
-        return None
-
-df[COL_PIOGGIA] = df[COL_PIOGGIA].apply(pulisci_e_converti_numero)
-# ------------------------------------
-
-df.dropna(subset=[COL_PIOGGIA, 'X', 'Y'], inplace=True)
-
-# --- 4. FILTRI NELLA SIDEBAR ---
-st.sidebar.title("Filtri e Opzioni")
-
-if not df.empty:
-    min_pioggia = int(df[COL_PIOGGIA].min())
-    max_pioggia = int(df[COL_PIOGGIA].max())
-    filtro_pioggia = st.sidebar.slider(
-        f"Mostra stazioni con '{COL_PIOGGIA}' >= a:",
-        min_value=min_pioggia,
-        max_value=max_pioggia,
-        value=min_pioggia,
-        step=1
+# --- Preparazione Mappa ---
+required_cols = [COL_LAT, COL_LON, COL_COLORE]
+if not all(col in df.columns for col in required_cols):
+    st.error(
+        f"❌ Colonne necessarie non trovate! Assicurati che nel Google Sheet esistano: "
+        f"'{COL_LAT}', '{COL_LON}' e '{COL_COLORE}'."
     )
-    df_filtrato = df[df[COL_PIOGGIA] >= filtro_pioggia].copy()
-    st.sidebar.info(f"Mostrate **{len(df_filtrato)}** stazioni su **{len(df)}** totali.")
-else:
-    st.sidebar.warning("Nessun dato valido da filtrare.")
-    df_filtrato = pd.DataFrame()
+    st.stop()
 
-# --- 5. LOGICA DEI COLORI E CREAZIONE MAPPA ---
+df.dropna(subset=[COL_LAT, COL_LON], inplace=True)
 mappa = folium.Map(location=[43.5, 11.0], zoom_start=8)
 
-if not df_filtrato.empty:
-    norm = colors.Normalize(vmin=df[COL_PIOGGIA].min(), vmax=df[COL_PIOGGIA].max())
-    colormap = cm.get_cmap('Blues')
-    def get_color_from_value(value):
-        return colors.to_hex(colormap(norm(value)))
+def get_marker_color(val):
+    val = str(val).strip().upper()
+    return {
+        "ROSSO": "red",
+        "GIALLO": "yellow",
+        "ARANCIONE": "orange",
+        "VERDE": "green"
+    }.get(val, "gray")
 
-    for _, row in df_filtrato.iterrows():
-        try:
-            lat = float(str(row['Y']).replace(',', '.'))
-            lon = float(str(row['X']).replace(',', '.'))
-            valore_pioggia = row[COL_PIOGGIA]
-            colore = get_color_from_value(valore_pioggia)
-            popup_html = f"<h4>{row.get('STAZIONE', 'N/A')}</h4><hr>"
-            for col_name in COLS_TO_SHOW_NAMES:
-                if col_name in row and pd.notna(row[col_name]):
-                    popup_html += f"<b>{col_name}</b>: {row[col_name]}<br>"
-            folium.CircleMarker(
-                location=[lat, lon],
-                radius=6,
-                color=colore,
-                fill=True,
-                fill_color=colore,
-                fill_opacity=0.9,
-                popup=folium.Popup(popup_html, max_width=350)
-            ).add_to(mappa)
-        except (ValueError, TypeError):
+for _, row in df.iterrows():
+    try:
+        lat = float(str(row[COL_LAT]).replace(',', '.'))
+        lon = float(str(row[COL_LON]).replace(',', '.'))
+        if not (42 < lat < 45 and 9 < lon < 13):
             continue
-else:
-    st.warning("Nessuna stazione corrisponde ai filtri selezionati.")
+        colore = get_marker_color(row[COL_COLORE])
+        popup_html = ""
+        for col_name, col_value in row.items():
+            if pd.notna(col_value) and str(col_value).strip() != "":
+                popup_html += f"<b>{col_name}</b>: {str(col_value)}<br>"
+        folium.CircleMarker(
+            location=[lat, lon],
+            radius=6,
+            color=colore,
+            fill=True,
+            fill_color=colore,
+            fill_opacity=0.9,
+            popup=folium.Popup(popup_html, max_width=350)
+        ).add_to(mappa)
+    except (ValueError, TypeError):
+        continue
 
-if not df.empty:
-    min_val_legenda = df[COL_PIOGGIA].min()
-    max_val_legenda = df[COL_PIOGGIA].max()
-    norm_legenda = colors.Normalize(vmin=min_val_legenda, vmax=max_val_legenda)
-    colormap_legenda = cm.get_cmap('Blues')
-    legenda_html = f"""
-    <div style="position: fixed; bottom: 20px; left: 20px; z-index:1000; background-color: rgba(255, 255, 255, 0.8); padding: 10px; border-radius: 5px; border: 1px solid grey; font-family: sans-serif; font-size: 14px;">
-        <b>Legenda: {COL_PIOGGIA}</b><br>
-        <i style="background: {colors.to_hex(colormap_legenda(norm_legenda(min_val_legenda)))}; border: 1px solid #ccc;">       </i> Min ({min_val_legenda:.1f})<br>
-        <i style="background: {colors.to_hex(colormap_legenda(norm_legenda(max_val_legenda)))}; border: 1px solid #ccc;">       </i> Max ({max_val_legenda:.1f})
-    </div>
-    """
-    st.markdown(legenda_html, unsafe_allow_html=True)
-
+# --- Visualizzazione Mappa ---
+# La riga st.title() è stata spostata all'inizio, qui mostriamo solo la mappa.
 folium_static(mappa, width=1000, height=700)
