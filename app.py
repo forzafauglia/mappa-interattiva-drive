@@ -6,6 +6,7 @@ from datetime import datetime
 
 # --- 1. FUNZIONE DI CONTROLLO PASSWORD (INVARIATA) ---
 def check_password():
+    # ... (il resto della funzione è identico, lo ometto per brevità)
     """Restituisce True se l'utente è autenticato, altrimenti False."""
     def password_entered():
         if st.session_state["password"] == st.secrets["password"]:
@@ -54,7 +55,6 @@ COL_COLORE = "COLORE"
 def load_data():
     try:
         df = pd.read_csv(SHEET_URL, na_values=["#N/D", "#N/A"])
-        # Pulisce gli spazi extra dai nomi delle colonne
         df.columns = df.columns.str.strip()
         df.attrs['last_loaded'] = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
         return df
@@ -68,19 +68,7 @@ if df.empty:
     st.warning("Il DataFrame è vuoto o non è stato possibile caricarlo.")
     st.stop()
 
-# --- NUOVA SEZIONE: AIUTO PER DEBUGGING COLONNE ---
-# Questo expander ti mostra i nomi esatti delle colonne per aiutarti a correggere la lista qui sotto.
-with st.expander("ℹ️ AIUTO: Controlla i Nomi delle Colonne"):
-    st.warning(
-        "Se un filtro non appare nella sidebar, il suo nome nel codice (nella lista `COLONNE_FILTRO`) "
-        "potrebbe non corrispondere a quello nel Google Sheet. Copia e incolla il nome esatto da qui sotto."
-    )
-    st.info("Nomi esatti delle colonne trovati nel file:")
-    st.json(df.columns.tolist())
-
-
-# --- Preparazione Colonne per i Filtri ---
-# MODIFICA IMPORTANTE: Assicurati che i nomi qui sotto siano IDENTICI a quelli mostrati nell'expander qui sopra.
+# --- MODIFICA IMPORTANTE: Assicurati che i nomi qui sotto siano IDENTICI a quelli del tuo Sheet
 COLONNE_FILTRO = [
     "PIOGGE RESIDUA",
     "MEDIA PORCINI CALDO BASE",
@@ -91,20 +79,48 @@ COLONNE_FILTRO = [
     "MEDIA PORCINI FREDDO BASE DA ST"
 ]
 
+# --- STRUMENTI DI DIAGNOSI (Migliorati) ---
+with st.expander("✅ FASE 1: Controlla i Nomi Esatti delle Colonne"):
+    st.info("Nomi esatti delle colonne trovati nel file (copia e incolla da qui per correggere la lista `COLONNE_FILTRO` nel codice):")
+    st.json(df.columns.tolist())
+
+# --- NUOVO: STRUMENTO DI ANALISI AVANZATA ---
+with st.expander("🔬 FASE 2: Analisi Avanzata delle Colonne con Problemi"):
+    st.warning("Questo strumento controlla le colonne che danno problemi. Verifica il 'Tipo di Dati' (dtype). Se è 'object', significa che la colonna contiene testo e non può essere usata per un filtro numerico.")
+    colonne_problematiche = [
+        "MEDIA PORCINI FREDDO BOOST",
+        "MEDIA PORCINI CALDO BASE DA ST",
+        "MEDIA PORCINI FREDDO BASE DA ST"
+    ]
+    for col in colonne_problematiche:
+        st.markdown(f"--- \n### Analisi per: `{col}`")
+        if col in df.columns:
+            st.success(f"✔️ Il nome della colonna '{col}' è stato **TROVATO**.")
+            st.write(f"**Tipo di Dati (dtype):** `{df[col].dtype}`")
+            st.write("**Primi 10 valori trovati nella colonna:**")
+            st.dataframe(df[col].head(10))
+            if df[col].dtype == 'object':
+                st.error("PROBLEMA: Il tipo di dati è 'object' (testo). Controlla nel Google Sheet che in questa colonna ci siano solo numeri e che il separatore decimale sia il punto (.), non la virgola (,).")
+        else:
+            st.error(f"❌ PROBLEMA: Il nome della colonna '{col}' **NON è stato trovato**. Controlla che sia scritto correttamente nella lista `COLONNE_FILTRO` e confrontalo con la lista nella FASE 1.")
+
+
 # Convertiamo le colonne in numerico, gestendo eventuali errori
 for col in COLONNE_FILTRO:
     if col in df.columns:
-        df[col] = pd.to_numeric(df[col], errors='coerce')
+        # Sostituiamo le virgole con i punti PRIMA di convertire in numerico
+        df[col] = pd.to_numeric(df[col].astype(str).str.replace(',', '.'), errors='coerce')
+
 
 # --- Sidebar ---
 st.sidebar.title("Informazioni e Filtri")
+# ... (il resto della sidebar e della mappa rimane identico, lo ometto per brevità)
 st.sidebar.markdown("---")
 st.sidebar.subheader("Statistiche")
 st.sidebar.info(f"Visite totali: **{counter['count']}**")
 if 'last_loaded' in df.attrs:
     st.sidebar.info(f"Dati aggiornati il: **{df.attrs['last_loaded']}**")
 
-# --- Sezione Filtri nella Sidebar (MODIFICATA) ---
 st.sidebar.markdown("---")
 st.sidebar.subheader("Filtri Dati")
 
@@ -112,38 +128,27 @@ df_filtrato = df.copy()
 
 for colonna in COLONNE_FILTRO:
     if colonna in df.columns and not df[colonna].dropna().empty:
-        # Troviamo il massimo valore nella colonna
         max_val = float(df[colonna].max())
-        
-        # --- MODIFICA: LO SLIDER PARTE SEMPRE DA 0 ---
         valore_selezionato = st.sidebar.slider(
             label=f"Filtra per {colonna}",
-            min_value=0.0, # Parte sempre da 0
+            min_value=0.0,
             max_value=max_val,
-            value=(0.0, max_val) # Il valore di default copre l'intero range possibile
+            value=(0.0, max_val)
         )
-        
-        # Applichiamo il filtro al nostro dataframe
-        # Usiamo .fillna(0) per considerare i valori nulli come 0 e non scartarli se lo slider è a zero
         df_filtrato = df_filtrato[
             (df_filtrato[colonna].fillna(0) >= valore_selezionato[0]) &
             (df_filtrato[colonna].fillna(0) <= valore_selezionato[1])
         ]
     else:
-        # Questo messaggio apparirà se il nome nella lista COLONNE_FILTRO non è corretto
-        st.sidebar.warning(f"La colonna per il filtro '{colonna}' non è presente o è vuota.")
-        
+        st.sidebar.warning(f"La colonna per il filtro '{colonna}' non è presente o non contiene dati numerici validi.")
+
 st.sidebar.markdown("---")
 st.sidebar.success(f"Visualizzati {len(df_filtrato.dropna(subset=[COL_LAT, COL_LON]))} marker sulla mappa.")
 
-
-# --- Preparazione Mappa (ora usa df_filtrato) ---
+# --- Preparazione e Visualizzazione Mappa (INVARIATA) ---
 required_cols = [COL_LAT, COL_LON, COL_COLORE]
 if not all(col in df_filtrato.columns for col in required_cols):
-    st.error(
-        f"❌ Colonne necessarie non trovate! Assicurati che nel Google Sheet esistano: "
-        f"'{COL_LAT}', '{COL_LON}' e '{COL_COLORE}'."
-    )
+    st.error(f"❌ Colonne necessarie non trovate! Assicurati che nel Google Sheet esistano: '{COL_LAT}', '{COL_LON}' e '{COL_COLORE}'.")
     st.stop()
 
 df_filtrato.dropna(subset=[COL_LAT, COL_LON], inplace=True)
@@ -172,5 +177,4 @@ for _, row in df_filtrato.iterrows():
     except (ValueError, TypeError):
         continue
 
-# --- Visualizzazione Mappa (INVARIATA) ---
 folium_static(mappa, width=1000, height=700)
