@@ -77,12 +77,11 @@ COLONNE_FILTRO = [
     "PIOGGE RESIDUA",
     "MEDIA PORCINI CALDO BASE",
     "MEDIA PORCINI CALDO BOOST",
+    "MEDIA PORCINI CALDO BASE DA ST",
     "MEDIA PORCINI FREDDO BASE",
     "MEDIA PORCINI FREDDO BOOST",
-    "MEDIA PORCINI CALDO BASE DA ST",
-    "MEDIA PORCINI CALDO BOOST  DA ST",   # <-- Corretto con 2 spazi
     "MEDIA PORCINI FREDDO BASE  DA ST",   # <-- Corretto con 2 spazi
-    "MEDIA PORCINI FREDDO BOOST  DA ST"   # <-- Corretto con 2 spazi
+
 ]
 
 # Rimuoviamo dalla lista le colonne che non esistono nel dataframe per evitare errori
