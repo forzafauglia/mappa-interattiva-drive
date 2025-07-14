@@ -39,7 +39,6 @@ check_password()
 
 # --- 2. IL CODICE DELLA TUA APP ---
 st.set_page_config(page_title="Mappa Funghi Protetta", layout="wide")
-
 st.title("🗺️ Mappa Interattiva – by Bobo")
 
 # --- Caricamento Dati (INVARIATO) ---
@@ -55,6 +54,7 @@ COL_COLORE = "COLORE"
 def load_data():
     try:
         df = pd.read_csv(SHEET_URL, na_values=["#N/D", "#N/A"])
+        # Pulisce gli spazi extra dai nomi delle colonne
         df.columns = df.columns.str.strip()
         df.attrs['last_loaded'] = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
         return df
@@ -67,9 +67,20 @@ df = load_data()
 if df.empty:
     st.warning("Il DataFrame è vuoto o non è stato possibile caricarlo.")
     st.stop()
-    
-# --- Preparazione Colonne per i Filtri (NUOVA PARTE) ---
-# Definiamo le colonne che vogliamo usare per i filtri
+
+# --- NUOVA SEZIONE: AIUTO PER DEBUGGING COLONNE ---
+# Questo expander ti mostra i nomi esatti delle colonne per aiutarti a correggere la lista qui sotto.
+with st.expander("ℹ️ AIUTO: Controlla i Nomi delle Colonne"):
+    st.warning(
+        "Se un filtro non appare nella sidebar, il suo nome nel codice (nella lista `COLONNE_FILTRO`) "
+        "potrebbe non corrispondere a quello nel Google Sheet. Copia e incolla il nome esatto da qui sotto."
+    )
+    st.info("Nomi esatti delle colonne trovati nel file:")
+    st.json(df.columns.tolist())
+
+
+# --- Preparazione Colonne per i Filtri ---
+# MODIFICA IMPORTANTE: Assicurati che i nomi qui sotto siano IDENTICI a quelli mostrati nell'expander qui sopra.
 COLONNE_FILTRO = [
     "PIOGGE RESIDUA",
     "MEDIA PORCINI CALDO BASE",
@@ -87,49 +98,46 @@ for col in COLONNE_FILTRO:
 
 # --- Sidebar ---
 st.sidebar.title("Informazioni e Filtri")
-
-# st.sidebar.write("✅ Colonne lette:", df.columns.tolist()) # <-- MODIFICA: RIGA COMMENTATA/ELIMINATA
-
 st.sidebar.markdown("---")
 st.sidebar.subheader("Statistiche")
 st.sidebar.info(f"Visite totali: **{counter['count']}**")
 if 'last_loaded' in df.attrs:
     st.sidebar.info(f"Dati aggiornati il: **{df.attrs['last_loaded']}**")
 
-# --- NUOVA SEZIONE: FILTRI NELLA SIDEBAR ---
+# --- Sezione Filtri nella Sidebar (MODIFICATA) ---
 st.sidebar.markdown("---")
 st.sidebar.subheader("Filtri Dati")
 
-# Creiamo un DataFrame filtrato partendo da una copia dell'originale
 df_filtrato = df.copy()
 
 for colonna in COLONNE_FILTRO:
     if colonna in df.columns and not df[colonna].dropna().empty:
-        min_val = float(df[colonna].min())
+        # Troviamo il massimo valore nella colonna
         max_val = float(df[colonna].max())
         
-        # Usiamo un range slider per selezionare un intervallo
+        # --- MODIFICA: LO SLIDER PARTE SEMPRE DA 0 ---
         valore_selezionato = st.sidebar.slider(
             label=f"Filtra per {colonna}",
-            min_value=min_val,
+            min_value=0.0, # Parte sempre da 0
             max_value=max_val,
-            value=(min_val, max_val) # Imposta il default all'intero range
+            value=(0.0, max_val) # Il valore di default copre l'intero range possibile
         )
         
         # Applichiamo il filtro al nostro dataframe
+        # Usiamo .fillna(0) per considerare i valori nulli come 0 e non scartarli se lo slider è a zero
         df_filtrato = df_filtrato[
-            (df_filtrato[colonna] >= valore_selezionato[0]) &
-            (df_filtrato[colonna] <= valore_selezionato[1])
+            (df_filtrato[colonna].fillna(0) >= valore_selezionato[0]) &
+            (df_filtrato[colonna].fillna(0) <= valore_selezionato[1])
         ]
     else:
+        # Questo messaggio apparirà se il nome nella lista COLONNE_FILTRO non è corretto
         st.sidebar.warning(f"La colonna per il filtro '{colonna}' non è presente o è vuota.")
         
 st.sidebar.markdown("---")
-# <-- MODIFICA: Il conteggio dei marker ora si basa sul dataframe filtrato
 st.sidebar.success(f"Visualizzati {len(df_filtrato.dropna(subset=[COL_LAT, COL_LON]))} marker sulla mappa.")
 
 
-# --- Preparazione Mappa (leggermente modificato per usare i dati filtrati) ---
+# --- Preparazione Mappa (ora usa df_filtrato) ---
 required_cols = [COL_LAT, COL_LON, COL_COLORE]
 if not all(col in df_filtrato.columns for col in required_cols):
     st.error(
@@ -143,14 +151,8 @@ mappa = folium.Map(location=[43.5, 11.0], zoom_start=8)
 
 def get_marker_color(val):
     val = str(val).strip().upper()
-    return {
-        "ROSSO": "red",
-        "GIALLO": "yellow",
-        "ARANCIONE": "orange",
-        "VERDE": "green"
-    }.get(val, "gray")
+    return {"ROSSO": "red", "GIALLO": "yellow", "ARANCIONE": "orange", "VERDE": "green"}.get(val, "gray")
 
-# <-- MODIFICA: Il ciclo ora itera su `df_filtrato` invece che su `df`
 for _, row in df_filtrato.iterrows():
     try:
         lat = float(str(row[COL_LAT]).replace(',', '.'))
@@ -163,12 +165,8 @@ for _, row in df_filtrato.iterrows():
             if pd.notna(col_value) and str(col_value).strip() != "":
                 popup_html += f"<b>{col_name}</b>: {str(col_value)}<br>"
         folium.CircleMarker(
-            location=[lat, lon],
-            radius=6,
-            color=colore,
-            fill=True,
-            fill_color=colore,
-            fill_opacity=0.9,
+            location=[lat, lon], radius=6, color=colore, fill=True,
+            fill_color=colore, fill_opacity=0.9,
             popup=folium.Popup(popup_html, max_width=350)
         ).add_to(mappa)
     except (ValueError, TypeError):
