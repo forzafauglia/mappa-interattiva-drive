@@ -79,30 +79,18 @@ if check_password():
             df[col_numerica] = pd.to_numeric(split_cols[0].str.replace(',', '.'), errors='coerce')
             col_data = f"Data Sbalzo {suffisso}"
             df[col_data] = pd.to_datetime(split_cols[1], format='%d/%m/%Y', errors='coerce')
-
-            # Riempi i valori numerici mancanti con 0
             df[col_numerica] = df[col_numerica].fillna(0)
-
-            # Riempi le date mancanti con la data PIÙ VECCHIA trovata nella colonna
             if not df[col_data].dropna().empty:
                 min_date_in_col = df[col_data].min()
                 df[col_data] = df[col_data].fillna(min_date_in_col)
 
-    # --- MODIFICA: LISTA FILTRI STANDARD AGGIORNATA COME RICHIESTO ---
+    # --- LISTA FILTRI STANDARD AGGIORNATA ---
     COLONNE_FILTRO = [
-        "TEMPERATURA MEDIANA",
-        "PIOGGE RESIDUA",
-        "Piogge entro 5 gg",
-        "Piogge entro 10 gg",
-        "MEDIA PORCINI CALDO BASE",
-        "MEDIA PORCINI FREDDO BASE",
-        "MEDIA PORCINI CALDO ST MIGLIORE",
-        "MEDIA PORCINI FREDDO ST MIGLIORE",
-        "MEDIA PORCINI CALDO ST SECONDO",
-        "MEDIA PORCINI FREDDO ST SECONDO"
+        "TEMPERATURA MEDIANA", "PIOGGE RESIDUA", "Piogge entro 5 gg", "Piogge entro 10 gg",
+        "MEDIA PORCINI CALDO BASE", "MEDIA PORCINI FREDDO BASE",
+        "MEDIA PORCINI CALDO ST MIGLIORE", "MEDIA PORCINI FREDDO ST MIGLIORE",
+        "MEDIA PORCINI CALDO ST SECONDO", "MEDIA PORCINI FREDDO ST SECONDO"
     ]
-    
-    # Sezione di preparazione (invariata)
     COLONNE_FILTRO_ESISTENTI = [col for col in COLONNE_FILTRO if col in df.columns]
     for col in COLONNE_FILTRO_ESISTENTI:
         df[col] = pd.to_numeric(df[col].astype(str).str.replace(',', '.'), errors='coerce')
@@ -114,13 +102,9 @@ if check_password():
     st.sidebar.info(f"Visite totali: **{counter['count']}**")
     if 'last_loaded' in df.attrs:
         st.sidebar.info(f"Dati aggiornati il: **{df.attrs['last_loaded']}**")
-
     st.sidebar.markdown("---")
     st.sidebar.subheader("Filtri Dati Standard")
-    
     df_filtrato = df.copy()
-
-    # Ciclo per i filtri numerici standard
     for colonna in COLONNE_FILTRO_ESISTENTI:
         if not df[colonna].dropna().empty:
             min_val, max_val = float(df[colonna].min()), float(df[colonna].max())
@@ -131,15 +115,11 @@ if check_password():
                 (df_filtrato[colonna].fillna(0) >= val_selezionato[0]) &
                 (df_filtrato[colonna].fillna(0) <= val_selezionato[1])
             ]
-
     st.sidebar.markdown("---")
     st.sidebar.subheader("Filtri Sbalzo Termico")
-
-    # Ciclo per i filtri avanzati dello sbalzo termico
     for col_originale, suffisso in sbalzo_cols_map.items():
         col_numerica = f"Sbalzo Numerico {suffisso}"
         col_data = f"Data Sbalzo {suffisso}"
-
         if col_numerica in df_filtrato.columns and not df_filtrato[col_numerica].dropna().empty:
             st.sidebar.markdown(f"**{suffisso}**")
             min_val, max_val = float(df_filtrato[col_numerica].min()), float(df_filtrato[col_numerica].max())
@@ -150,22 +130,17 @@ if check_password():
                 (df_filtrato[col_numerica].fillna(0) >= val_selezionato[0]) &
                 (df_filtrato[col_numerica].fillna(0) <= val_selezionato[1])
             ]
-        
         if col_data in df_filtrato.columns and not df_filtrato[col_data].dropna().empty:
             min_data, max_data = df_filtrato[col_data].min(), df_filtrato[col_data].max()
             data_selezionata = st.sidebar.date_input(
-                f"Data Sbalzo {suffisso}",
-                value=(min_data, max_data),
-                min_value=min_data,
-                max_value=max_data,
-                key=f"date_{suffisso}"
+                f"Data Sbalzo {suffisso}", value=(min_data, max_data),
+                min_value=min_data, max_value=max_data, key=f"date_{suffisso}"
             )
             if len(data_selezionata) == 2:
                 df_filtrato = df_filtrato[
                     (df_filtrato[col_data].dt.date >= data_selezionata[0]) &
                     (df_filtrato[col_data].dt.date <= data_selezionata[1])
                 ]
-
     st.sidebar.markdown("---")
     st.sidebar.success(f"Visualizzati {len(df_filtrato.dropna(subset=[COL_LAT, COL_LON]))} marker sulla mappa.")
 
@@ -177,6 +152,53 @@ if check_password():
 
     df_mappa = df_filtrato.dropna(subset=[COL_LAT, COL_LON]).copy()
     mappa = folium.Map(location=[43.5, 11.0], zoom_start=8)
+    
+    # --- NUOVA FUNZIONE PER CREARE IL POPUP FORM ATTATO ---
+    def create_popup_html(row):
+        # Definisce lo stile CSS per le tabelle
+        html = """
+        <style>
+            .popup-container { font-family: Arial, sans-serif; font-size: 13px; }
+            h4 { margin-top: 12px; margin-bottom: 5px; color: #0057e7; border-bottom: 1px solid #ccc; padding-bottom: 3px; }
+            table { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
+            td { text-align: left; padding: 4px; border-bottom: 1px solid #eee; }
+            td:first-child { font-weight: bold; color: #333; width: 65%; }
+            td:last-child { color: #555; }
+        </style>
+        <div class="popup-container">
+        """
+        
+        # Dizionario per raggruppare le colonne
+        groups = {
+            "Info Stazione": ["Stazione", "DESCRIZIONE", "COMUNE", "ALTITUDINE"],
+            "Dati Meteo": ["UMIDITA MEDIA 7GG", "TEMPERATURA MEDIANA", "PIOGGE RESIDUA", "Piogge entro 5 gg", "Piogge entro 10 gg", "Totale Piogge Mensili"],
+            "Analisi Base": ["MEDIA PORCINI CALDO BASE", "DURATA RANGE CALDO", "CONTEGGIO GG ALLA RACCOLTA CALDO", "MEDIA PORCINI FREDDO BASE", "DURATA RANGE FREDDO", "CONTEGGIO GG ALLA RACCOLTA FREDDO"],
+            "Analisi Sbalzo Migliore": ["SBALZO TERMICO MIGLIORE", "MEDIA PORCINI CALDO ST MIGLIORE", "GG ST MIGLIORE CALDO", "MEDIA PORCINI FREDDO ST MIGLIORE", "GG ST MIGLIORE FREDDO"],
+            "Analisi Sbalzo Secondo": ["SBALZO TERMICO SECONDO", "MEDIA PORCINI CALDO ST SECONDO", "GG ST SECONDO CALDO", "MEDIA PORCINI FREDDO ST SECONDO", "GG ST SECONDO FREDDO"]
+        }
+
+        # Genera le tabelle per ogni gruppo
+        for title, columns in groups.items():
+            table_html = "<table>"
+            has_content = False
+            for col_name in columns:
+                if col_name in row and pd.notna(row[col_name]):
+                    has_content = True
+                    value = row[col_name]
+                    # Formatta i numeri
+                    if isinstance(value, (int, float)):
+                        value_str = f"{value:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+                    else:
+                        value_str = str(value)
+                    table_html += f"<tr><td>{col_name}</td><td>{value_str}</td></tr>"
+            table_html += "</table>"
+            
+            if has_content:
+                html += f"<h4>{title}</h4>{table_html}"
+
+        html += "</div>"
+        return html
+
 
     def get_marker_color(val):
         val = str(val).strip().upper()
@@ -190,17 +212,13 @@ if check_password():
                 continue
             colore = get_marker_color(row[COL_COLORE])
             
-            popup_html = ""
-            for col_name, col_value in row.items():
-                # Non mostriamo le colonne "virtuali" che abbiamo creato
-                if 'Sbalzo Numerico' not in col_name and 'Data Sbalzo' not in col_name:
-                    if pd.notna(col_value) and str(col_value).strip() != "":
-                        popup_html += f"<b>{col_name}</b>: {str(col_value)}<br>"
+            # Chiama la nuova funzione per generare il popup
+            popup_html = create_popup_html(row)
                     
             folium.CircleMarker(
                 location=[lat, lon], radius=6, color=colore, fill=True,
                 fill_color=colore, fill_opacity=0.9,
-                popup=folium.Popup(popup_html, max_width=350)
+                popup=folium.Popup(popup_html, max_width=400) # Aumentata la larghezza massima
             ).add_to(mappa)
         except (ValueError, TypeError):
             continue
