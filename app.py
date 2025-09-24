@@ -94,7 +94,7 @@ if check_password():
     for col in COLONNE_FILTRO_ESISTENTI:
         df[col] = pd.to_numeric(df[col].astype(str).str.replace(',', '.'), errors='coerce')
 
-    # --- Sidebar (invariata) ---
+    # --- Sidebar ---
     st.sidebar.title("Informazioni e Filtri")
     st.sidebar.markdown("---")
     st.sidebar.subheader("Statistiche")
@@ -103,25 +103,33 @@ if check_password():
         st.sidebar.info(f"Dati aggiornati il: **{df.attrs['last_loaded']}**")
     st.sidebar.markdown("---")
     st.sidebar.subheader("Filtri Dati Standard")
+    
     df_filtrato = df.copy()
+
+    # I limiti (min_val, max_val) sono calcolati su `df` (il dataframe originale)
     for colonna in COLONNE_FILTRO_ESISTENTI:
         if not df[colonna].dropna().empty:
             min_val, max_val = float(df[colonna].min()), float(df[colonna].max())
             val_selezionato = st.sidebar.slider(
                 f"Filtra per {colonna}", 0.0, max_val, (0.0, max_val)
             )
+            # Il filtro viene applicato su `df_filtrato`
             df_filtrato = df_filtrato[
                 (df_filtrato[colonna].fillna(0) >= val_selezionato[0]) &
                 (df_filtrato[colonna].fillna(0) <= val_selezionato[1])
             ]
+
     st.sidebar.markdown("---")
     st.sidebar.subheader("Filtri Sbalzo Termico")
+
     for col_originale, suffisso in sbalzo_cols_map.items():
         col_numerica = f"Sbalzo Numerico {suffisso}"
         col_data = f"Data Sbalzo {suffisso}"
-        if col_numerica in df_filtrato.columns and not df_filtrato[col_numerica].dropna().empty:
+
+        if col_numerica in df.columns and not df[col_numerica].dropna().empty:
             st.sidebar.markdown(f"**{suffisso}**")
-            min_val, max_val = float(df_filtrato[col_numerica].min()), float(df_filtrato[col_numerica].max())
+            # --- MODIFICA CHIAVE 1: Usa `df` per i limiti dello slider ---
+            min_val, max_val = float(df[col_numerica].min()), float(df[col_numerica].max())
             val_selezionato = st.sidebar.slider(
                 f"Valore Sbalzo {suffisso}", 0.0, max_val, (0.0, max_val)
             )
@@ -129,8 +137,10 @@ if check_password():
                 (df_filtrato[col_numerica].fillna(0) >= val_selezionato[0]) &
                 (df_filtrato[col_numerica].fillna(0) <= val_selezionato[1])
             ]
-        if col_data in df_filtrato.columns and not df_filtrato[col_data].dropna().empty:
-            min_data, max_data = df_filtrato[col_data].min(), df_filtrato[col_data].max()
+        
+        if col_data in df.columns and not df[col_data].dropna().empty:
+            # --- MODIFICA CHIAVE 2: Usa `df` per i limiti del selettore data ---
+            min_data, max_data = df[col_data].min(), df[col_data].max()
             data_selezionata = st.sidebar.date_input(
                 f"Data Sbalzo {suffisso}", value=(min_data, max_data),
                 min_value=min_data, max_value=max_data, key=f"date_{suffisso}"
@@ -140,10 +150,12 @@ if check_password():
                     (df_filtrato[col_data].dt.date >= data_selezionata[0]) &
                     (df_filtrato[col_data].dt.date <= data_selezionata[1])
                 ]
+
     st.sidebar.markdown("---")
     st.sidebar.success(f"Visualizzati {len(df_filtrato.dropna(subset=[COL_LAT, COL_LON]))} marker sulla mappa.")
 
-    # --- Preparazione e Visualizzazione Mappa ---
+    # --- Preparazione e Visualizzazione Mappa (invariato) ---
+    # ... (Il resto del codice è identico a prima e corretto)
     required_cols = [COL_LAT, COL_LON, COL_COLORE]
     if not all(col in df_filtrato.columns for col in required_cols):
         st.error(f"❌ Colonne necessarie non trovate!")
@@ -153,16 +165,14 @@ if check_password():
     mappa = folium.Map(location=[43.5, 11.0], zoom_start=8)
     
     def create_popup_html(row):
-        # --- MODIFICA CHIAVE QUI ---
         html = """
         <style>
             .popup-container { 
                 font-family: Arial, sans-serif; 
                 font-size: 13px;
-                /* NUOVE REGOLE PER IL MOBILE */
-                max-height: 350px;      /* Imposta un'altezza massima */
-                overflow-y: auto;       /* Aggiunge la barra di scorrimento verticale se necessario */
-                overflow-x: hidden;     /* Nasconde lo scorrimento orizzontale */
+                max-height: 350px;
+                overflow-y: auto;
+                overflow-x: hidden;
             }
             h4 { margin-top: 12px; margin-bottom: 5px; color: #0057e7; border-bottom: 1px solid #ccc; padding-bottom: 3px; }
             table { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
@@ -216,7 +226,6 @@ if check_password():
             folium.CircleMarker(
                 location=[lat, lon], radius=6, color=colore, fill=True,
                 fill_color=colore, fill_opacity=0.9,
-                # Ho ridotto leggermente la larghezza massima per sicurezza sui cellulari
                 popup=folium.Popup(popup_html, max_width=380)
             ).add_to(mappa)
         except (ValueError, TypeError):
