@@ -233,3 +233,4 @@ if check_password():
 
     folium_static(mappa, width=1000, height=700)
 
+
