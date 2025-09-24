@@ -85,7 +85,7 @@ if check_password():
                 df[col_data] = df[col_data].fillna(min_date_in_col)
 
     COLONNE_FILTRO = [
-        "TEMPERATURA MEDIANA", "PIOGGE RESIDUA", "Piogge entro 5 gg", "Piogge entro 10 gg",
+        "TEMPERATURA MEDIANA", "PIOGGE RESIDUA",
         "MEDIA PORCINI CALDO BASE", "MEDIA PORCINI FREDDO BASE",
         "MEDIA PORCINI CALDO ST MIGLIORE", "MEDIA PORCINI FREDDO ST MIGLIORE",
         "MEDIA PORCINI CALDO ST SECONDO", "MEDIA PORCINI FREDDO ST SECONDO"
@@ -232,3 +232,4 @@ if check_password():
             continue
 
     folium_static(mappa, width=1000, height=700)
+
