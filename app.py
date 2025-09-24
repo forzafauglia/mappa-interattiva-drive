@@ -42,25 +42,38 @@ if check_password():
     st.set_page_config(page_title="Mappa Funghi Protetta", layout="wide")
     st.title("🗺️ Mappa Interattiva – by Bobo")
     
-    # --- Caricamento Dati e Pre-Elaborazione (invariato) ---
+    # --- Caricamento Dati e Pre-Elaborazione ---
     SHEET_URL = "https://docs.google.com/spreadsheets/d/1G4cJPBAYdb8Xv-mHNX3zmVhsz6FqWf_zE14mBXcs5_A/gviz/tq?tqx=out:csv"
     COL_LAT = "Y"; COL_LON = "X"; COL_COLORE = "COLORE"
     COLONNE_NUMERICHE = [ "TEMPERATURA MEDIANA", "PIOGGE RESIDUA", "Piogge entro 5 gg", "Piogge entro 10 gg", "MEDIA PORCINI CALDO BASE", "MEDIA PORCINI FREDDO BASE", "MEDIA PORCINI CALDO ST MIGLIORE", "MEDIA PORCINI FREDDO ST MIGLIORE", "MEDIA PORCINI CALDO ST SECONDO", "MEDIA PORCINI FREDDO ST SECONDO", "TEMPERATURA MEDIANA MINIMA", "UMIDITA MEDIA 7GG", "Totale Piogge Mensili", "MEDIA PORCINI CALDO BOOST", "DURATA RANGE CALDO", "CONTEGGIO GG ALLA RACCOLTA CALDO", "MEDIA PORCINI FREDDO BOOST", "DURATA RANGE FREDDO", "CONTEGGIO GG ALLA RACCOLTA FREDDO", "MEDIA BOOST CALDO ST MIGLIORE", "GG ST MIGLIORE CALDO", "MEDIA BOOST FREDDO ST MIGLIORE", "GG ST MIGLIORE FREDDO", "MEDIA BOOST CALDO ST SECONDO", "GG ST SECONDO CALDO", "MEDIA BOOST FREDDO ST SECONDO", "GG ST SECONDO FREDDO", "ALTITUDINE" ]
+    
     @st.cache_data(ttl=3600)
     def load_data():
         try:
-            dtype_mapping = {col: str for col in COLONNE_NUMERICHE}; df = pd.read_csv(SHEET_URL, na_values=["#N/D", "#N/A"], dtype=dtype_mapping); df.columns = df.columns.str.strip(); df.attrs['last_loaded'] = datetime.now().strftime("%d/%m/%Y %H:%M:%S"); return df
+            # Leggiamo TUTTO come testo per la massima robustezza
+            df = pd.read_csv(SHEET_URL, na_values=["#N/D", "#N/A"], dtype=str)
+            df.columns = df.columns.str.strip()
+            df.attrs['last_loaded'] = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+            return df
         except Exception as e:
             st.error(f"Impossibile caricare i dati dal Google Sheet. Errore: {e}"); return pd.DataFrame()
+            
     df = load_data()
     if df.empty: st.warning("Il DataFrame è vuoto o non è stato possibile caricarlo."); st.stop()
+        
     sbalzo_cols_map = { "SBALZO TERMICO MIGLIORE": "Migliore", "SBALZO TERMICO SECONDO": "Secondo" }
     for col_originale, suffisso in sbalzo_cols_map.items():
         if col_originale in df.columns:
-            split_cols = df[col_originale].str.split(' - ', n=1, expand=True); col_numerica = f"Sbalzo Numerico {suffisso}"; df[col_numerica] = pd.to_numeric(split_cols[0].str.replace(',', '.'), errors='coerce'); col_data = f"Data Sbalzo {suffisso}"; df[col_data] = pd.to_datetime(split_cols[1], format='%d/%m/%Y', errors='coerce'); df[col_numerica] = df[col_numerica].fillna(0)
-            if not df[col_data].dropna().empty: min_date_in_col = df[col_data].min(); df[col_data] = df[col_data].fillna(min_date_in_col)
+            split_cols = df[col_originale].str.split(' - ', n=1, expand=True)
+            col_numerica = f"Sbalzo Numerico {suffisso}"; df[col_numerica] = pd.to_numeric(split_cols[0].str.replace(',', '.'), errors='coerce')
+            col_data = f"Data Sbalzo {suffisso}"; df[col_data] = pd.to_datetime(split_cols[1], format='%d/%m/%Y', errors='coerce')
+            df[col_numerica] = df[col_numerica].fillna(0)
+            if not df[col_data].dropna().empty:
+                min_date_in_col = df[col_data].min(); df[col_data] = df[col_data].fillna(min_date_in_col)
+                
     for col in COLONNE_NUMERICHE:
         if col in df.columns: df[col] = pd.to_numeric(df[col].astype(str).str.replace(',', '.'), errors='coerce')
+            
     COLONNE_FILTRO = [ "TEMPERATURA MEDIANA", "PIOGGE RESIDUA", "Piogge entro 5 gg", "Piogge entro 10 gg", "MEDIA PORCINI CALDO BASE", "MEDIA PORCINI FREDDO BASE", "MEDIA PORCINI CALDO ST MIGLIORE", "MEDIA PORCINI FREDDO ST MIGLIORE", "MEDIA PORCINI CALDO ST SECONDO", "MEDIA PORCINI FREDDO ST SECONDO" ]
     COLONNE_FILTRO_ESISTENTI = [col for col in COLONNE_FILTRO if col in df.columns]
 
@@ -73,11 +86,19 @@ if check_password():
         { "url": "https://raw.githubusercontent.com/forzafauglia/mappa-interattiva-drive/main/Wikiloc2.json", "name": "Punti Wikiloc 2", "style": {'color': '#6f42c1'} }
     ]
 
-    # --- Sidebar (invariato) ---
+    # --- Sidebar ---
     st.sidebar.title("Informazioni e Filtri")
     st.sidebar.markdown("---")
-    st.sidebar.subheader("Statistiche"); st.sidebar.info(f"Visite totali: **{counter['count']}**")
-    if 'last_loaded' in df.attrs: st.sidebar.info(f"Dati aggiornati il: **{df.attrs['last_loaded']}**")
+    st.sidebar.subheader("Statistiche")
+    st.sidebar.info(f"Visite totali: **{counter['count']}**")
+    
+    # MODIFICA: Visualizzazione di ENTRAMBE le date di aggiornamento
+    if 'last_loaded' in df.attrs:
+        st.sidebar.info(f"App aggiornata il: **{df.attrs['last_loaded']}**")
+    if 'ULTIMO_AGGIORNAMENTO_SHEET' in df.columns and not df['ULTIMO_AGGIORNAMENTO_SHEET'].empty:
+        last_sheet_update = df['ULTIMO_AGGIORNAMENTO_SHEET'].iloc[0]
+        st.sidebar.info(f"Sheet aggiornato il: **{last_sheet_update}**")
+
     st.sidebar.markdown("---")
     st.sidebar.subheader("Filtri Dati Standard")
     df_filtrato = df.copy()
@@ -106,45 +127,19 @@ if check_password():
     df_mappa = df_filtrato.dropna(subset=[COL_LAT, COL_LON]).copy()
     mappa = folium.Map(location=[43.5, 11.0], zoom_start=8)
     
-    # --- BLOCCO AGGIORNATO E ROBUSTO PER CARICARE I GEOJSON ---
+    # --- BLOCCO GEOJSON SEMPLIFICATO E SICURO ---
     for layer_info in layers_geojson:
         if layer_info['is_visible']:
             try:
-                gjson = folium.GeoJson(
+                folium.GeoJson(
                     layer_info['url'],
                     name=layer_info['name'],
-                    style_function=lambda x, color=layer_info['style']['color']: {
-                        'color': color,
-                        'weight': 3,
-                        'opacity': 0.8
-                    },
-                    # Questa funzione viene chiamata per ogni punto nel file
-                    point_to_layer=lambda feature, latlng: folium.CircleMarker(
-                        location=latlng,
-                        radius=5,
-                        color='white',
-                        weight=1,
-                        fill_color=layer_info['style']['color'],
-                        fill_opacity=0.8
-                    )
+                    style_function=lambda x, color=layer_info['style']['color']: {'color': color, 'weight': 3, 'opacity': 0.8},
+                    point_to_layer=lambda x, latlng, color=layer_info['style']['color']: folium.CircleMarker(
+                        location=latlng, radius=5, color='white', weight=1, fill_color=color, fill_opacity=0.8),
+                    popup=layer_info['name'],
+                    tooltip=layer_info['name']
                 ).add_to(mappa)
-
-                # Aggiunge un popup manuale che gestisce i dati complessi
-                gjson.add_child(folium.Popup(
-                    folium.Html(
-                        '''
-                        <b>Nome:</b> {name}<br>
-                        <b>Descrizione:</b><br> {description}
-                        ''',
-                        script=True
-                    ),
-                    parse_html=True,
-                    max_width=350
-                ))
-                
-                # Aggiunge un tooltip che mostra solo il nome
-                gjson.add_child(folium.Tooltip(fields=['name']))
-
             except Exception as e:
                 st.warning(f"Impossibile caricare o processare il livello '{layer_info['name']}'. Errore: {e}")
 
