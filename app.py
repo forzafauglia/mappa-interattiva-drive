@@ -4,9 +4,8 @@ import folium
 from streamlit_folium import folium_static
 from datetime import datetime
 
-# --- 1. FUNZIONE DI CONTROLLO PASSWORD (INVARIATA) ---
+# --- 1. FUNZIONE DI CONTROLLO PASSWORD ---
 def check_password():
-    # ... (omesso per brevità, è identico a prima)
     """Restituisce True se l'utente è autenticato, altrimenti False."""
     def password_entered():
         if st.session_state["password"] == st.secrets["password"]:
@@ -28,7 +27,7 @@ def check_password():
         st.stop()
     return True
 
-# --- Contatore di Visualizzazioni (INVARIATA) ---
+# --- Contatore di Visualizzazioni ---
 @st.cache_resource
 def get_view_counter():
     return {"count": 0}
@@ -38,11 +37,11 @@ counter["count"] += 1
 # Esegui il controllo della password
 if check_password():
 
-    # --- 2. IL CODICE DELLA TUA APP ---
+    # --- 2. IL CODICE DELL'APP ---
     st.set_page_config(page_title="Mappa Funghi Protetta", layout="wide")
     st.title("🗺️ Mappa Interattiva – by Bobo")
 
-    # --- Caricamento Dati (INVARIATO) ---
+    # --- Caricamento Dati ---
     SHEET_URL = (
         "https://docs.google.com/spreadsheets/"
         "d/1G4cJPBAYdb8Xv-mHNX3zmVhsz6FqWf_zE14mBXcs5_A/gviz/tq?tqx=out:csv"
@@ -68,7 +67,7 @@ if check_password():
         st.warning("Il DataFrame è vuoto o non è stato possibile caricarlo.")
         st.stop()
 
-    # --- MODIFICA CHIAVE: PRE-ELABORAZIONE E INIZIALIZZAZIONE DATI ---
+    # --- PRE-ELABORAZIONE E INIZIALIZZAZIONE DATI SBALZO TERMICO ---
     sbalzo_cols_map = {
         "SBALZO TERMICO MIGLIORE": "Migliore",
         "SBALZO TERMICO SECONDO": "Secondo"
@@ -81,7 +80,6 @@ if check_password():
             col_data = f"Data Sbalzo {suffisso}"
             df[col_data] = pd.to_datetime(split_cols[1], format='%d/%m/%Y', errors='coerce')
 
-            # --- NUOVA LOGICA DI INIZIALIZZAZIONE ---
             # Riempi i valori numerici mancanti con 0
             df[col_numerica] = df[col_numerica].fillna(0)
 
@@ -90,16 +88,22 @@ if check_password():
                 min_date_in_col = df[col_data].min()
                 df[col_data] = df[col_data].fillna(min_date_in_col)
 
-    # --- Lista colonne per filtri standard ---
+    # --- MODIFICA: LISTA FILTRI STANDARD AGGIORNATA COME RICHIESTO ---
     COLONNE_FILTRO = [
-        "UMIDITA MEDIA 7GG", "TEMPERATURA MEDIANA", "PIOGGE RESIDUA",
-        "Piogge entro 5 gg", "Piogge entro 10 gg", "MEDIA PORCINI CALDO BASE",
-        "MEDIA PORCINI CALDO BOOST", "MEDIA PORCINI FREDDO BASE",
-        "MEDIA PORCINI FREDDO BOOST", "MEDIA PORCINI CALDO ST MIGLIORE",
-        "MEDIA PORCINI FREDDO ST MIGLIORE"
+        "TEMPERATURA MEDIANA",
+        "PIOGGE RESIDUA",
+        "Piogge entro 5 gg",
+        "Piogge entro 10 gg",
+        "MEDIA PORCINI CALDO BASE",
+        "MEDIA PORCINI FREDDO BASE",
+        "MEDIA PORCINI CALDO ST MIGLIORE",
+        "MEDIA PORCINI FREDDO ST MIGLIORE",
+        "MEDIA PORCINI CALDO ST SECONDO",
+        "MEDIA PORCINI FREDDO ST SECONDO"
     ]
+    
+    # Sezione di preparazione (invariata)
     COLONNE_FILTRO_ESISTENTI = [col for col in COLONNE_FILTRO if col in df.columns]
-
     for col in COLONNE_FILTRO_ESISTENTI:
         df[col] = pd.to_numeric(df[col].astype(str).str.replace(',', '.'), errors='coerce')
 
@@ -116,6 +120,7 @@ if check_password():
     
     df_filtrato = df.copy()
 
+    # Ciclo per i filtri numerici standard
     for colonna in COLONNE_FILTRO_ESISTENTI:
         if not df[colonna].dropna().empty:
             min_val, max_val = float(df[colonna].min()), float(df[colonna].max())
@@ -130,6 +135,7 @@ if check_password():
     st.sidebar.markdown("---")
     st.sidebar.subheader("Filtri Sbalzo Termico")
 
+    # Ciclo per i filtri avanzati dello sbalzo termico
     for col_originale, suffisso in sbalzo_cols_map.items():
         col_numerica = f"Sbalzo Numerico {suffisso}"
         col_data = f"Data Sbalzo {suffisso}"
@@ -154,7 +160,6 @@ if check_password():
                 max_value=max_data,
                 key=f"date_{suffisso}"
             )
-            # RIPRISTINO LOGICA DI FILTRO SEMPLICE: ora funziona perché non ci sono più date vuote
             if len(data_selezionata) == 2:
                 df_filtrato = df_filtrato[
                     (df_filtrato[col_data].dt.date >= data_selezionata[0]) &
@@ -164,15 +169,14 @@ if check_password():
     st.sidebar.markdown("---")
     st.sidebar.success(f"Visualizzati {len(df_filtrato.dropna(subset=[COL_LAT, COL_LON]))} marker sulla mappa.")
 
-    # --- Preparazione e Visualizzazione Mappa (INVARIATA) ---
-    # ... (il resto del codice è identico e corretto)
+    # --- Preparazione e Visualizzazione Mappa ---
     required_cols = [COL_LAT, COL_LON, COL_COLORE]
     if not all(col in df_filtrato.columns for col in required_cols):
         st.error(f"❌ Colonne necessarie non trovate! Controlla che nel file esistano '{COL_LAT}', '{COL_LON}' e '{COL_COLORE}'.")
         st.stop()
 
     df_mappa = df_filtrato.dropna(subset=[COL_LAT, COL_LON]).copy()
-    mappa = folium.Map(location=[[43.5, 11.0]], zoom_start=8)
+    mappa = folium.Map(location=[43.5, 11.0], zoom_start=8)
 
     def get_marker_color(val):
         val = str(val).strip().upper()
@@ -188,6 +192,7 @@ if check_password():
             
             popup_html = ""
             for col_name, col_value in row.items():
+                # Non mostriamo le colonne "virtuali" che abbiamo creato
                 if 'Sbalzo Numerico' not in col_name and 'Data Sbalzo' not in col_name:
                     if pd.notna(col_value) and str(col_value).strip() != "":
                         popup_html += f"<b>{col_name}</b>: {str(col_value)}<br>"
