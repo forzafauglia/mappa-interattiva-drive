@@ -3,6 +3,7 @@ import pandas as pd
 import folium
 from streamlit_folium import folium_static
 from datetime import datetime
+import requests # <-- AGGIUNTA NECESSARIA
 
 # --- 1. FUNZIONE DI CONTROLLO PASSWORD (invariato) ---
 def check_password():
@@ -64,14 +65,13 @@ if check_password():
     COLONNE_FILTRO = [ "TEMPERATURA MEDIANA", "PIOGGE RESIDUA", "Piogge entro 5 gg", "Piogge entro 10 gg", "MEDIA PORCINI CALDO BASE", "MEDIA PORCINI FREDDO BASE", "MEDIA PORCINI CALDO ST MIGLIORE", "MEDIA PORCINI FREDDO ST MIGLIORE", "MEDIA PORCINI CALDO ST SECONDO", "MEDIA PORCINI FREDDO ST SECONDO" ]
     COLONNE_FILTRO_ESISTENTI = [col for col in COLONNE_FILTRO if col in df.columns]
 
-    # MODIFICA: Aggiunta la chiave "popup_fields" per specificare quali dati mostrare
     layers_geojson = [
-        { "url": "https://raw.githubusercontent.com/forzafauglia/mappa-interattiva-drive/main/Bobo1.json", "name": "Punti Bobo 1", "style": {'color': '#007bff'}, "popup_fields": ["name", "description"] },
-        { "url": "https://raw.githubusercontent.com/forzafauglia/mappa-interattiva-drive/main/Bobo2.json", "name": "Punti Bobo 2", "style": {'color': '#17a2b8'}, "popup_fields": ["name", "description"] },
-        { "url": "https://raw.githubusercontent.com/forzafauglia/mappa-interattiva-drive/main/Professore1.json", "name": "Punti Professore 1", "style": {'color': '#dc3545'}, "popup_fields": ["name", "description"] },
-        { "url": "https://raw.githubusercontent.com/forzafauglia/mappa-interattiva-drive/main/Professore2.json", "name": "Punti Professore 2", "style": {'color': '#fd7e14'}, "popup_fields": ["name", "description"] },
-        { "url": "https://raw.githubusercontent.com/forzafauglia/mappa-interattiva-drive/main/Wikiloc1.json", "name": "Punti Wikiloc 1", "style": {'color': '#28a745'}, "popup_fields": ["name", "description"] },
-        { "url": "https://raw.githubusercontent.com/forzafauglia/mappa-interattiva-drive/main/Wikiloc2.json", "name": "Punti Wikiloc 2", "style": {'color': '#6f42c1'}, "popup_fields": ["name", "description"] }
+        { "url": "https://raw.githubusercontent.com/forzafauglia/mappa-interattiva-drive/main/Bobo1.json", "name": "Punti Bobo 1", "style": {'color': '#007bff'} },
+        { "url": "https://raw.githubusercontent.com/forzafauglia/mappa-interattiva-drive/main/Bobo2.json", "name": "Punti Bobo 2", "style": {'color': '#17a2b8'} },
+        { "url": "https://raw.githubusercontent.com/forzafauglia/mappa-interattiva-drive/main/Professore1.json", "name": "Punti Professore 1", "style": {'color': '#dc3545'} },
+        { "url": "https://raw.githubusercontent.com/forzafauglia/mappa-interattiva-drive/main/Professore2.json", "name": "Punti Professore 2", "style": {'color': '#fd7e14'} },
+        { "url": "https://raw.githubusercontent.com/forzafauglia/mappa-interattiva-drive/main/Wikiloc1.json", "name": "Punti Wikiloc 1", "style": {'color': '#28a745'} },
+        { "url": "https://raw.githubusercontent.com/forzafauglia/mappa-interattiva-drive/main/Wikiloc2.json", "name": "Punti Wikiloc 2", "style": {'color': '#6f42c1'} }
     ]
 
     # --- Sidebar (invariato) ---
@@ -107,42 +107,56 @@ if check_password():
     df_mappa = df_filtrato.dropna(subset=[COL_LAT, COL_LON]).copy()
     mappa = folium.Map(location=[43.5, 11.0], zoom_start=8)
     
+    # --- NUOVO BLOCCO PER CARICARE I GEOJSON IN MODO ROBUSTO ---
     for layer_info in layers_geojson:
         if layer_info['is_visible']:
             try:
-                # Definiamo un popup che legge i campi dal file
-                popup = folium.GeoJsonPopup(
-                    fields=layer_info["popup_fields"],
-                    aliases=[field.capitalize() + ":" for field in layer_info["popup_fields"]],
-                    localize=True,
-                    style="background-color: white; color: black; font-family: sans-serif; font-size: 14px; padding: 10px;"
-                )
-                
-                # Definiamo un tooltip che mostra solo il nome al passaggio del mouse
-                tooltip = folium.GeoJsonTooltip(
-                    fields=["name"],
-                    aliases=["Nome:"],
-                    style=("background-color: grey; color: white; font-family: sans-serif; font-size: 12px; padding: 5px;")
-                )
+                # 1. Carica i dati dall'URL
+                response = requests.get(layer_info['url'])
+                response.raise_for_status()  # Lancia un errore se il download fallisce
+                geojson_data = response.json()
 
-                # MODIFICA: Dato che sono PUNTI, usiamo il parametro 'marker' per personalizzarli
-                gjson = folium.GeoJson(
-                    layer_info["url"],
-                    name=layer_info["name"],
-                    marker=folium.CircleMarker(
-                        radius=5,
-                        weight=1,
-                        color='white',
-                        fill_color=layer_info["style"]["color"],
-                        fill_opacity=0.8
-                    ),
-                    popup=popup,
-                    tooltip=tooltip
-                )
-                gjson.add_to(mappa)
+                # 2. Crea un gruppo di layer per contenere tutti i punti di questo file
+                layer_group = folium.FeatureGroup(name=layer_info['name'], show=True)
+
+                # 3. Itera su ogni "feature" (punto) nel file
+                for feature in geojson_data.get('features', []):
+                    props = feature.get('properties', {})
+                    # 4. Estrai nome e descrizione in modo sicuro
+                    name = props.get('name', 'Nessun nome')
+                    desc = props.get('description', '')
+
+                    # Gestisce il formato complesso della descrizione di Wikiloc
+                    if isinstance(desc, dict) and desc.get('@type') == 'html' and 'value' in desc:
+                        desc_html = desc['value']
+                    else:
+                        desc_html = str(desc)
+
+                    popup_content = f"<h4>{name}</h4>{desc_html}"
+                    
+                    # Estrai le coordinate
+                    coords = feature.get('geometry', {}).get('coordinates', None)
+                    if coords and len(coords) >= 2:
+                        # GeoJSON è [lon, lat], Folium vuole [lat, lon]
+                        lat, lon = coords[1], coords[0]
+                        
+                        # 5. Crea un CircleMarker per il punto e aggiungilo al gruppo
+                        folium.CircleMarker(
+                            location=[lat, lon],
+                            radius=5,
+                            color='white',
+                            weight=1,
+                            fill_color=layer_info["style"]["color"],
+                            fill_opacity=0.8,
+                            popup=folium.Popup(popup_content, max_width=350),
+                            tooltip=name
+                        ).add_to(layer_group)
+                
+                # 6. Aggiungi l'intero gruppo alla mappa
+                layer_group.add_to(mappa)
 
             except Exception as e:
-                st.warning(f"Impossibile caricare il livello '{layer_info['name']}'. Errore: {e}")
+                st.warning(f"Impossibile caricare o processare il livello '{layer_info['name']}'. Errore: {e}")
 
     # --- Codice per marker e popup stazioni (invariato) ---
     def create_popup_html(row):
