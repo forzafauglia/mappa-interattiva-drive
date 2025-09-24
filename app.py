@@ -95,7 +95,7 @@ if check_password():
     for col in COLONNE_FILTRO_ESISTENTI:
         df[col] = pd.to_numeric(df[col].astype(str).str.replace(',', '.'), errors='coerce')
 
-    # --- Sidebar ---
+    # --- Sidebar (invariata) ---
     st.sidebar.title("Informazioni e Filtri")
     st.sidebar.markdown("---")
     st.sidebar.subheader("Statistiche")
@@ -153,12 +153,11 @@ if check_password():
     df_mappa = df_filtrato.dropna(subset=[COL_LAT, COL_LON]).copy()
     mappa = folium.Map(location=[43.5, 11.0], zoom_start=8)
     
-    # --- NUOVA FUNZIONE PER CREARE IL POPUP FORM ATTATO ---
+    # --- FUNZIONE POPUP AGGIORNATA ---
     def create_popup_html(row):
-        # Definisce lo stile CSS per le tabelle
         html = """
         <style>
-            .popup-container { font-family: Arial, sans-serif; font-size: 13px; }
+            .popup-container { font-family: Arial, sans-serif; font-size: 13px; max-width: 380px; }
             h4 { margin-top: 12px; margin-bottom: 5px; color: #0057e7; border-bottom: 1px solid #ccc; padding-bottom: 3px; }
             table { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
             td { text-align: left; padding: 4px; border-bottom: 1px solid #eee; }
@@ -168,29 +167,27 @@ if check_password():
         <div class="popup-container">
         """
         
-        # Dizionario per raggruppare le colonne
+        # Dizionario AGGIORNATO e COMPLETO per raggruppare le colonne
         groups = {
             "Info Stazione": ["Stazione", "DESCRIZIONE", "COMUNE", "ALTITUDINE"],
-            "Dati Meteo": ["UMIDITA MEDIA 7GG", "TEMPERATURA MEDIANA", "PIOGGE RESIDUA", "Piogge entro 5 gg", "Piogge entro 10 gg", "Totale Piogge Mensili"],
-            "Analisi Base": ["MEDIA PORCINI CALDO BASE", "DURATA RANGE CALDO", "CONTEGGIO GG ALLA RACCOLTA CALDO", "MEDIA PORCINI FREDDO BASE", "DURATA RANGE FREDDO", "CONTEGGIO GG ALLA RACCOLTA FREDDO"],
-            "Analisi Sbalzo Migliore": ["SBALZO TERMICO MIGLIORE", "MEDIA PORCINI CALDO ST MIGLIORE", "GG ST MIGLIORE CALDO", "MEDIA PORCINI FREDDO ST MIGLIORE", "GG ST MIGLIORE FREDDO"],
-            "Analisi Sbalzo Secondo": ["SBALZO TERMICO SECONDO", "MEDIA PORCINI CALDO ST SECONDO", "GG ST SECONDO CALDO", "MEDIA PORCINI FREDDO ST SECONDO", "GG ST SECONDO FREDDO"]
+            "Dati Meteo": ["TEMPERATURA MEDIANA MINIMA", "TEMPERATURA MEDIANA", "UMIDITA MEDIA 7GG", "PIOGGE RESIDUA", "Piogge entro 5 gg", "Piogge entro 10 gg", "Totale Piogge Mensili"],
+            "Analisi Base": ["MEDIA PORCINI CALDO BASE", "MEDIA PORCINI CALDO BOOST", "DURATA RANGE CALDO", "CONTEGGIO GG ALLA RACCOLTA CALDO", "MEDIA PORCINI FREDDO BASE", "MEDIA PORCINI FREDDO BOOST", "DURATA RANGE FREDDO", "CONTEGGIO GG ALLA RACCOLTA FREDDO"],
+            "Analisi Sbalzo Migliore": ["SBALZO TERMICO MIGLIORE", "MEDIA PORCINI CALDO ST MIGLIORE", "MEDIA BOOST CALDO ST MIGLIORE", "GG ST MIGLIORE CALDO", "MEDIA PORCINI FREDDO ST MIGLIORE", "MEDIA BOOST FREDDO ST MIGLIORE", "GG ST MIGLIORE FREDDO"],
+            "Analisi Sbalzo Secondo": ["SBALZO TERMICO SECONDO", "MEDIA PORCINI CALDO ST SECONDO", "MEDIA BOOST CALDO ST SECONDO", "GG ST SECONDO CALDO", "MEDIA PORCINI FREDDO ST SECONDO", "MEDIA BOOST FREDDO ST SECONDO", "GG ST SECONDO FREDDO"]
         }
 
-        # Genera le tabelle per ogni gruppo
         for title, columns in groups.items():
             table_html = "<table>"
             has_content = False
             for col_name in columns:
-                if col_name in row and pd.notna(row[col_name]):
+                if col_name in row and pd.notna(row[col_name]) and str(row[col_name]).strip() != '':
                     has_content = True
                     value = row[col_name]
-                    # Formatta i numeri
                     if isinstance(value, (int, float)):
                         value_str = f"{value:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
                     else:
                         value_str = str(value)
-                    table_html += f"<tr><td>{col_name}</td><td>{value_str}</td></tr>"
+                    table_html += f"<tr><td>{col_name.replace('_', ' ')}</td><td>{value_str}</td></tr>" # .replace per nomi più puliti
             table_html += "</table>"
             
             if has_content:
@@ -198,7 +195,6 @@ if check_password():
 
         html += "</div>"
         return html
-
 
     def get_marker_color(val):
         val = str(val).strip().upper()
@@ -211,14 +207,11 @@ if check_password():
             if not (42 < lat < 45 and 9 < lon < 13):
                 continue
             colore = get_marker_color(row[COL_COLORE])
-            
-            # Chiama la nuova funzione per generare il popup
             popup_html = create_popup_html(row)
-                    
             folium.CircleMarker(
                 location=[lat, lon], radius=6, color=colore, fill=True,
                 fill_color=colore, fill_opacity=0.9,
-                popup=folium.Popup(popup_html, max_width=400) # Aumentata la larghezza massima
+                popup=folium.Popup(popup_html, max_width=400)
             ).add_to(mappa)
         except (ValueError, TypeError):
             continue
