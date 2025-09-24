@@ -41,7 +41,7 @@ if check_password():
     st.set_page_config(page_title="Mappa Funghi Protetta", layout="wide")
     st.title("🗺️ Mappa Interattiva – by Bobo")
 
-    # --- Caricamento Dati ---
+    # --- Caricamento Dati (invariato) ---
     SHEET_URL = (
         "https://docs.google.com/spreadsheets/"
         "d/1G4cJPBAYdb8Xv-mHNX3zmVhsz6FqWf_zE14mBXcs5_A/gviz/tq?tqx=out:csv"
@@ -67,7 +67,7 @@ if check_password():
         st.warning("Il DataFrame è vuoto o non è stato possibile caricarlo.")
         st.stop()
 
-    # --- PRE-ELABORAZIONE E INIZIALIZZAZIONE DATI SBALZO TERMICO ---
+    # --- PRE-ELABORAZIONE DATI (invariato) ---
     sbalzo_cols_map = {
         "SBALZO TERMICO MIGLIORE": "Migliore",
         "SBALZO TERMICO SECONDO": "Secondo"
@@ -84,7 +84,6 @@ if check_password():
                 min_date_in_col = df[col_data].min()
                 df[col_data] = df[col_data].fillna(min_date_in_col)
 
-    # --- LISTA FILTRI STANDARD AGGIORNATA ---
     COLONNE_FILTRO = [
         "TEMPERATURA MEDIANA", "PIOGGE RESIDUA", "Piogge entro 5 gg", "Piogge entro 10 gg",
         "MEDIA PORCINI CALDO BASE", "MEDIA PORCINI FREDDO BASE",
@@ -147,17 +146,24 @@ if check_password():
     # --- Preparazione e Visualizzazione Mappa ---
     required_cols = [COL_LAT, COL_LON, COL_COLORE]
     if not all(col in df_filtrato.columns for col in required_cols):
-        st.error(f"❌ Colonne necessarie non trovate! Controlla che nel file esistano '{COL_LAT}', '{COL_LON}' e '{COL_COLORE}'.")
+        st.error(f"❌ Colonne necessarie non trovate!")
         st.stop()
 
     df_mappa = df_filtrato.dropna(subset=[COL_LAT, COL_LON]).copy()
     mappa = folium.Map(location=[43.5, 11.0], zoom_start=8)
     
-    # --- FUNZIONE POPUP AGGIORNATA ---
     def create_popup_html(row):
+        # --- MODIFICA CHIAVE QUI ---
         html = """
         <style>
-            .popup-container { font-family: Arial, sans-serif; font-size: 13px; max-width: 380px; }
+            .popup-container { 
+                font-family: Arial, sans-serif; 
+                font-size: 13px;
+                /* NUOVE REGOLE PER IL MOBILE */
+                max-height: 350px;      /* Imposta un'altezza massima */
+                overflow-y: auto;       /* Aggiunge la barra di scorrimento verticale se necessario */
+                overflow-x: hidden;     /* Nasconde lo scorrimento orizzontale */
+            }
             h4 { margin-top: 12px; margin-bottom: 5px; color: #0057e7; border-bottom: 1px solid #ccc; padding-bottom: 3px; }
             table { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
             td { text-align: left; padding: 4px; border-bottom: 1px solid #eee; }
@@ -167,7 +173,6 @@ if check_password():
         <div class="popup-container">
         """
         
-        # Dizionario AGGIORNATO e COMPLETO per raggruppare le colonne
         groups = {
             "Info Stazione": ["Stazione", "DESCRIZIONE", "COMUNE", "ALTITUDINE"],
             "Dati Meteo": ["TEMPERATURA MEDIANA MINIMA", "TEMPERATURA MEDIANA", "UMIDITA MEDIA 7GG", "PIOGGE RESIDUA", "Piogge entro 5 gg", "Piogge entro 10 gg", "Totale Piogge Mensili"],
@@ -187,7 +192,7 @@ if check_password():
                         value_str = f"{value:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
                     else:
                         value_str = str(value)
-                    table_html += f"<tr><td>{col_name.replace('_', ' ')}</td><td>{value_str}</td></tr>" # .replace per nomi più puliti
+                    table_html += f"<tr><td>{col_name.replace('_', ' ')}</td><td>{value_str}</td></tr>"
             table_html += "</table>"
             
             if has_content:
@@ -211,7 +216,8 @@ if check_password():
             folium.CircleMarker(
                 location=[lat, lon], radius=6, color=colore, fill=True,
                 fill_color=colore, fill_opacity=0.9,
-                popup=folium.Popup(popup_html, max_width=400)
+                # Ho ridotto leggermente la larghezza massima per sicurezza sui cellulari
+                popup=folium.Popup(popup_html, max_width=380)
             ).add_to(mappa)
         except (ValueError, TypeError):
             continue
