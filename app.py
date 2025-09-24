@@ -50,7 +50,6 @@ if check_password():
     @st.cache_data(ttl=3600)
     def load_data():
         try:
-            # Leggiamo TUTTO come testo per la massima robustezza
             df = pd.read_csv(SHEET_URL, na_values=["#N/D", "#N/A"], dtype=str)
             df.columns = df.columns.str.strip()
             df.attrs['last_loaded'] = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
@@ -91,14 +90,11 @@ if check_password():
     st.sidebar.markdown("---")
     st.sidebar.subheader("Statistiche")
     st.sidebar.info(f"Visite totali: **{counter['count']}**")
-    
-    # MODIFICA: Visualizzazione di ENTRAMBE le date di aggiornamento
     if 'last_loaded' in df.attrs:
         st.sidebar.info(f"App aggiornata il: **{df.attrs['last_loaded']}**")
     if 'ULTIMO_AGGIORNAMENTO_SHEET' in df.columns and not df['ULTIMO_AGGIORNAMENTO_SHEET'].empty:
         last_sheet_update = df['ULTIMO_AGGIORNAMENTO_SHEET'].iloc[0]
         st.sidebar.info(f"Sheet aggiornato il: **{last_sheet_update}**")
-
     st.sidebar.markdown("---")
     st.sidebar.subheader("Filtri Dati Standard")
     df_filtrato = df.copy()
@@ -127,19 +123,68 @@ if check_password():
     df_mappa = df_filtrato.dropna(subset=[COL_LAT, COL_LON]).copy()
     mappa = folium.Map(location=[43.5, 11.0], zoom_start=8)
     
-    # --- BLOCCO GEOJSON SEMPLIFICATO E SICURO ---
+    # --- BLOCCO GEOJSON DEFINITIVO E A PROVA DI ERRORE ---
     for layer_info in layers_geojson:
         if layer_info['is_visible']:
             try:
-                folium.GeoJson(
-                    layer_info['url'],
-                    name=layer_info['name'],
-                    style_function=lambda x, color=layer_info['style']['color']: {'color': color, 'weight': 3, 'opacity': 0.8},
-                    point_to_layer=lambda x, latlng, color=layer_info['style']['color']: folium.CircleMarker(
-                        location=latlng, radius=5, color='white', weight=1, fill_color=color, fill_opacity=0.8),
-                    popup=layer_info['name'],
-                    tooltip=layer_info['name']
-                ).add_to(mappa)
+                # Carica i dati dall'URL
+                response = requests.get(layer_info['url'])
+                response.raise_for_status()
+                geojson_data = response.json()
+
+                # Crea un gruppo per contenere tutti gli elementi di questo file
+                feature_group = folium.FeatureGroup(name=layer_info['name'])
+
+                # Itera su ogni "feature" (oggetto) nel file
+                for feature in geojson_data.get('features', []):
+                    geom = feature.get('geometry', {})
+                    geom_type = geom.get('type')
+                    coords = geom.get('coordinates')
+                    
+                    if not geom_type or not coords:
+                        continue # Salta se la geometria è malformata
+
+                    # Crea un popup e tooltip semplici e sicuri
+                    popup_text = layer_info['name']
+                    tooltip_text = layer_info['name']
+                    
+                    if geom_type == 'Point':
+                        # GeoJSON è [lon, lat], Folium vuole [lat, lon]
+                        location = [coords[1], coords[0]]
+                        folium.CircleMarker(
+                            location=location,
+                            radius=5,
+                            color='white',
+                            weight=1,
+                            fill_color=layer_info['style']['color'],
+                            fill_opacity=0.8,
+                            popup=popup_text,
+                            tooltip=tooltip_text
+                        ).add_to(feature_group)
+                    
+                    elif geom_type in ['LineString', 'MultiLineString']:
+                        # Per LineString, le coordinate sono una lista di punti
+                        # Per MultiLineString, sono una lista di liste di punti
+                        if geom_type == 'LineString':
+                            path_data = [coords]
+                        else: # MultiLineString
+                            path_data = coords
+                        
+                        for path in path_data:
+                            # Inverti lon/lat per ogni punto del tracciato
+                            locations = [[point[1], point[0]] for point in path]
+                            folium.PolyLine(
+                                locations=locations,
+                                color=layer_info['style']['color'],
+                                weight=3,
+                                opacity=0.8,
+                                popup=popup_text,
+                                tooltip=tooltip_text
+                            ).add_to(feature_group)
+                
+                # Aggiungi l'intero gruppo alla mappa
+                feature_group.add_to(mappa)
+
             except Exception as e:
                 st.warning(f"Impossibile caricare o processare il livello '{layer_info['name']}'. Errore: {e}")
 
