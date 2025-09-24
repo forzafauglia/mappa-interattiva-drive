@@ -6,6 +6,7 @@ from datetime import datetime
 
 # --- 1. FUNZIONE DI CONTROLLO PASSWORD (invariato) ---
 def check_password():
+    # ... (omesso per brevità)
     """Restituisce True se l'utente è autenticato, altrimenti False."""
     def password_entered():
         if st.session_state["password"] == st.secrets["password"]:
@@ -41,119 +42,109 @@ if check_password():
     st.set_page_config(page_title="Mappa Funghi Protetta", layout="wide")
     st.title("🗺️ Mappa Interattiva – by Bobo")
     
-    # --- Caricamento Dati e Pre-Elaborazione ---
+    # --- Caricamento Dati e Pre-Elaborazione (invariato) ---
     SHEET_URL = "https://docs.google.com/spreadsheets/d/1G4cJPBAYdb8Xv-mHNX3zmVhsz6FqWf_zE14mBXcs5_A/gviz/tq?tqx=out:csv"
     COL_LAT = "Y"; COL_LON = "X"; COL_COLORE = "COLORE"
-    COLONNE_NUMERICHE = [
-        "TEMPERATURA MEDIANA", "PIOGGE RESIDUA", "Piogge entro 5 gg", "Piogge entro 10 gg", "MEDIA PORCINI CALDO BASE", "MEDIA PORCINI FREDDO BASE",
-        "MEDIA PORCINI CALDO ST MIGLIORE", "MEDIA PORCINI FREDDO ST MIGLIORE", "MEDIA PORCINI CALDO ST SECONDO", "MEDIA PORCINI FREDDO ST SECONDO",
-        "TEMPERATURA MEDIANA MINIMA", "UMIDITA MEDIA 7GG", "Totale Piogge Mensili", "MEDIA PORCINI CALDO BOOST", "DURATA RANGE CALDO", "CONTEGGIO GG ALLA RACCOLTA CALDO",
-        "MEDIA PORCINI FREDDO BOOST", "DURATA RANGE FREDDO", "CONTEGGIO GG ALLA RACCOLTA FREDDO", "MEDIA BOOST CALDO ST MIGLIORE", "GG ST MIGLIORE CALDO",
-        "MEDIA BOOST FREDDO ST MIGLIORE", "GG ST MIGLIORE FREDDO", "MEDIA BOOST CALDO ST SECONDO", "GG ST SECONDO CALDO",
-        "MEDIA BOOST FREDDO ST SECONDO", "GG ST SECONDO FREDDO", "ALTITUDINE"
-    ]
-    
+    COLONNE_NUMERICHE = [ "TEMPERATURA MEDIANA", "PIOGGE RESIDUA", "Piogge entro 5 gg", "Piogge entro 10 gg", "MEDIA PORCINI CALDO BASE", "MEDIA PORCINI FREDDO BASE", "MEDIA PORCINI CALDO ST MIGLIORE", "MEDIA PORCINI FREDDO ST MIGLIORE", "MEDIA PORCINI CALDO ST SECONDO", "MEDIA PORCINI FREDDO ST SECONDO", "TEMPERATURA MEDIANA MINIMA", "UMIDITA MEDIA 7GG", "Totale Piogge Mensili", "MEDIA PORCINI CALDO BOOST", "DURATA RANGE CALDO", "CONTEGGIO GG ALLA RACCOLTA CALDO", "MEDIA PORCINI FREDDO BOOST", "DURATA RANGE FREDDO", "CONTEGGIO GG ALLA RACCOLTA FREDDO", "MEDIA BOOST CALDO ST MIGLIORE", "GG ST MIGLIORE CALDO", "MEDIA BOOST FREDDO ST MIGLIORE", "GG ST MIGLIORE FREDDO", "MEDIA BOOST CALDO ST SECONDO", "GG ST SECONDO CALDO", "MEDIA BOOST FREDDO ST SECONDO", "GG ST SECONDO FREDDO", "ALTITUDINE" ]
     @st.cache_data(ttl=3600)
     def load_data():
         try:
-            dtype_mapping = {col: str for col in COLONNE_NUMERICHE}
-            df = pd.read_csv(SHEET_URL, na_values=["#N/D", "#N/A"], dtype=dtype_mapping)
-            df.columns = df.columns.str.strip()
-            df.attrs['last_loaded'] = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
-            return df
+            dtype_mapping = {col: str for col in COLONNE_NUMERICHE}; df = pd.read_csv(SHEET_URL, na_values=["#N/D", "#N/A"], dtype=dtype_mapping); df.columns = df.columns.str.strip(); df.attrs['last_loaded'] = datetime.now().strftime("%d/%m/%Y %H:%M:%S"); return df
         except Exception as e:
-            st.error(f"Impossibile caricare i dati dal Google Sheet. Errore: {e}")
-            return pd.DataFrame()
-            
+            st.error(f"Impossibile caricare i dati dal Google Sheet. Errore: {e}"); return pd.DataFrame()
     df = load_data()
-    if df.empty:
-        st.warning("Il DataFrame è vuoto o non è stato possibile caricarlo."); st.stop()
-        
+    if df.empty: st.warning("Il DataFrame è vuoto o non è stato possibile caricarlo."); st.stop()
     sbalzo_cols_map = { "SBALZO TERMICO MIGLIORE": "Migliore", "SBALZO TERMICO SECONDO": "Secondo" }
     for col_originale, suffisso in sbalzo_cols_map.items():
         if col_originale in df.columns:
-            split_cols = df[col_originale].str.split(' - ', n=1, expand=True)
-            col_numerica = f"Sbalzo Numerico {suffisso}"; df[col_numerica] = pd.to_numeric(split_cols[0].str.replace(',', '.'), errors='coerce')
-            col_data = f"Data Sbalzo {suffisso}"; df[col_data] = pd.to_datetime(split_cols[1], format='%d/%m/%Y', errors='coerce')
-            df[col_numerica] = df[col_numerica].fillna(0)
-            if not df[col_data].dropna().empty:
-                min_date_in_col = df[col_data].min()
-                df[col_data] = df[col_data].fillna(min_date_in_col)
-                
+            split_cols = df[col_originale].str.split(' - ', n=1, expand=True); col_numerica = f"Sbalzo Numerico {suffisso}"; df[col_numerica] = pd.to_numeric(split_cols[0].str.replace(',', '.'), errors='coerce'); col_data = f"Data Sbalzo {suffisso}"; df[col_data] = pd.to_datetime(split_cols[1], format='%d/%m/%Y', errors='coerce'); df[col_numerica] = df[col_numerica].fillna(0)
+            if not df[col_data].dropna().empty: min_date_in_col = df[col_data].min(); df[col_data] = df[col_data].fillna(min_date_in_col)
     for col in COLONNE_NUMERICHE:
         if col in df.columns: df[col] = pd.to_numeric(df[col].astype(str).str.replace(',', '.'), errors='coerce')
-            
     COLONNE_FILTRO = [ "TEMPERATURA MEDIANA", "PIOGGE RESIDUA", "Piogge entro 5 gg", "Piogge entro 10 gg", "MEDIA PORCINI CALDO BASE", "MEDIA PORCINI FREDDO BASE", "MEDIA PORCINI CALDO ST MIGLIORE", "MEDIA PORCINI FREDDO ST MIGLIORE", "MEDIA PORCINI CALDO ST SECONDO", "MEDIA PORCINI FREDDO ST SECONDO" ]
     COLONNE_FILTRO_ESISTENTI = [col for col in COLONNE_FILTRO if col in df.columns]
 
+    # MODIFICA: Aggiunta la chiave "popup_fields" per specificare quali dati mostrare
     layers_geojson = [
-        { "url": "https://raw.githubusercontent.com/forzafauglia/mappa-interattiva-drive/main/Bobo1.json", "name": "Tracciato Bobo 1", "style": {'color': '#007bff', 'weight': 3, 'opacity': 0.8} },
-        { "url": "https://raw.githubusercontent.com/forzafauglia/mappa-interattiva-drive/main/Bobo2.json", "name": "Tracciato Bobo 2", "style": {'color': '#17a2b8', 'weight': 3, 'opacity': 0.8} },
-        { "url": "https://raw.githubusercontent.com/forzafauglia/mappa-interattiva-drive/main/Professore1.json", "name": "Tracciato Professore 1", "style": {'color': '#dc3545', 'weight': 3, 'opacity': 0.8} },
-        { "url": "https://raw.githubusercontent.com/forzafauglia/mappa-interattiva-drive/main/Professore2.json", "name": "Tracciato Professore 2", "style": {'color': '#fd7e14', 'weight': 3, 'opacity': 0.8, 'dashArray': '5, 5'} },
-        { "url": "https://raw.githubusercontent.com/forzafauglia/mappa-interattiva-drive/main/Wikiloc1.json", "name": "Tracciato Wikiloc 1", "style": {'color': '#28a745', 'weight': 3, 'opacity': 0.8} },
-        { "url": "https://raw.githubusercontent.com/forzafauglia/mappa-interattiva-drive/main/Wikiloc2.json", "name": "Tracciato Wikiloc 2", "style": {'color': '#6f42c1', 'weight': 3, 'opacity': 0.8} }
+        { "url": "https://raw.githubusercontent.com/forzafauglia/mappa-interattiva-drive/main/Bobo1.json", "name": "Punti Bobo 1", "style": {'color': '#007bff'}, "popup_fields": ["name", "description"] },
+        { "url": "https://raw.githubusercontent.com/forzafauglia/mappa-interattiva-drive/main/Bobo2.json", "name": "Punti Bobo 2", "style": {'color': '#17a2b8'}, "popup_fields": ["name", "description"] },
+        { "url": "https://raw.githubusercontent.com/forzafauglia/mappa-interattiva-drive/main/Professore1.json", "name": "Punti Professore 1", "style": {'color': '#dc3545'}, "popup_fields": ["name", "description"] },
+        { "url": "https://raw.githubusercontent.com/forzafauglia/mappa-interattiva-drive/main/Professore2.json", "name": "Punti Professore 2", "style": {'color': '#fd7e14'}, "popup_fields": ["name", "description"] },
+        { "url": "https://raw.githubusercontent.com/forzafauglia/mappa-interattiva-drive/main/Wikiloc1.json", "name": "Punti Wikiloc 1", "style": {'color': '#28a745'}, "popup_fields": ["name", "description"] },
+        { "url": "https://raw.githubusercontent.com/forzafauglia/mappa-interattiva-drive/main/Wikiloc2.json", "name": "Punti Wikiloc 2", "style": {'color': '#6f42c1'}, "popup_fields": ["name", "description"] }
     ]
 
-    # --- Sidebar ---
+    # --- Sidebar (invariato) ---
     st.sidebar.title("Informazioni e Filtri")
     st.sidebar.markdown("---")
-    st.sidebar.subheader("Statistiche")
-    st.sidebar.info(f"Visite totali: **{counter['count']}**")
+    st.sidebar.subheader("Statistiche"); st.sidebar.info(f"Visite totali: **{counter['count']}**")
     if 'last_loaded' in df.attrs: st.sidebar.info(f"Dati aggiornati il: **{df.attrs['last_loaded']}**")
     st.sidebar.markdown("---")
     st.sidebar.subheader("Filtri Dati Standard")
     df_filtrato = df.copy()
     for colonna in COLONNE_FILTRO_ESISTENTI:
         if not df[colonna].dropna().empty:
-            min_val, max_val = float(df[colonna].min()), float(df[colonna].max())
-            val_selezionato = st.sidebar.slider(f"Filtra per {colonna}", 0.0, max_val, (0.0, max_val))
-            df_filtrato = df_filtrato[(df_filtrato[colonna].fillna(0) >= val_selezionato[0]) & (df_filtrato[colonna].fillna(0) <= val_selezionato[1])]
+            min_val, max_val = float(df[colonna].min()), float(df[colonna].max()); val_selezionato = st.sidebar.slider(f"Filtra per {colonna}", 0.0, max_val, (0.0, max_val)); df_filtrato = df_filtrato[(df_filtrato[colonna].fillna(0) >= val_selezionato[0]) & (df_filtrato[colonna].fillna(0) <= val_selezionato[1])]
     st.sidebar.markdown("---")
     st.sidebar.subheader("Filtri Sbalzo Termico")
     for col_originale, suffisso in sbalzo_cols_map.items():
         col_numerica = f"Sbalzo Numerico {suffisso}"; col_data = f"Data Sbalzo {suffisso}"
         if col_numerica in df.columns and not df[col_numerica].dropna().empty:
-            st.sidebar.markdown(f"**{suffisso}**")
-            min_val, max_val = float(df[col_numerica].min()), float(df[col_numerica].max())
-            val_selezionato = st.sidebar.slider(f"Valore Sbalzo {suffisso}", 0.0, max_val, (0.0, max_val))
-            df_filtrato = df_filtrato[(df_filtrato[col_numerica].fillna(0) >= val_selezionato[0]) & (df_filtrato[col_numerica].fillna(0) <= val_selezionato[1])]
+            st.sidebar.markdown(f"**{suffisso}**"); min_val, max_val = float(df[col_numerica].min()), float(df[col_numerica].max()); val_selezionato = st.sidebar.slider(f"Valore Sbalzo {suffisso}", 0.0, max_val, (0.0, max_val)); df_filtrato = df_filtrato[(df_filtrato[col_numerica].fillna(0) >= val_selezionato[0]) & (df_filtrato[col_numerica].fillna(0) <= val_selezionato[1])]
         if col_data in df.columns and not df[col_data].dropna().empty:
-            min_data, max_data = df[col_data].min(), df[col_data].max()
-            data_selezionata = st.sidebar.date_input(f"Data Sbalzo {suffisso}", value=(min_data, max_data), min_value=min_data, max_value=max_data, key=f"date_{suffisso}")
-            if len(data_selezionata) == 2:
-                df_filtrato = df_filtrato[(df_filtrato[col_data].dt.date >= data_selezionata[0]) & (df_filtrato[col_data].dt.date <= data_selezionata[1])]
-
+            min_data, max_data = df[col_data].min(), df[col_data].max(); data_selezionata = st.sidebar.date_input(f"Data Sbalzo {suffisso}", value=(min_data, max_data), min_value=min_data, max_value=max_data, key=f"date_{suffisso}")
+            if len(data_selezionata) == 2: df_filtrato = df_filtrato[(df_filtrato[col_data].dt.date >= data_selezionata[0]) & (df_filtrato[col_data].dt.date <= data_selezionata[1])]
     st.sidebar.markdown("---")
     st.sidebar.subheader("Filtri Livelli Mappa")
     for layer in layers_geojson:
-        # MODIFICA 1: I tracciati partono spenti (value=False)
         layer['is_visible'] = st.sidebar.checkbox(label=layer["name"], value=False, key=f"geojson_{layer['name']}")
-
     st.sidebar.markdown("---")
     st.sidebar.success(f"Visualizzati {len(df_filtrato.dropna(subset=[COL_LAT, COL_LON]))} marker sulla mappa.")
 
     # --- Preparazione e Visualizzazione Mappa ---
-    required_cols = [COL_LAT, COL_LON, COL_COLORE]
+    required_cols = [COL_LAT, COL_LON, COL_COLORE];
     if not all(col in df_filtrato.columns for col in required_cols): st.error(f"❌ Colonne necessarie non trovate!"); st.stop()
-        
     df_mappa = df_filtrato.dropna(subset=[COL_LAT, COL_LON]).copy()
     mappa = folium.Map(location=[43.5, 11.0], zoom_start=8)
     
     for layer_info in layers_geojson:
         if layer_info['is_visible']:
             try:
-                # MODIFICA 2: Aggiungiamo un popup e un tooltip al tracciato
-                folium.GeoJson(
+                # Definiamo un popup che legge i campi dal file
+                popup = folium.GeoJsonPopup(
+                    fields=layer_info["popup_fields"],
+                    aliases=[field.capitalize() + ":" for field in layer_info["popup_fields"]],
+                    localize=True,
+                    style="background-color: white; color: black; font-family: sans-serif; font-size: 14px; padding: 10px;"
+                )
+                
+                # Definiamo un tooltip che mostra solo il nome al passaggio del mouse
+                tooltip = folium.GeoJsonTooltip(
+                    fields=["name"],
+                    aliases=["Nome:"],
+                    style=("background-color: grey; color: white; font-family: sans-serif; font-size: 12px; padding: 5px;")
+                )
+
+                # MODIFICA: Dato che sono PUNTI, usiamo il parametro 'marker' per personalizzarli
+                gjson = folium.GeoJson(
                     layer_info["url"],
                     name=layer_info["name"],
-                    style_function=lambda x, style=layer_info["style"]: style,
-                    tooltip=layer_info["name"],
-                    popup=folium.Popup(f"<b>{layer_info['name']}</b>")
-                ).add_to(mappa)
+                    marker=folium.CircleMarker(
+                        radius=5,
+                        weight=1,
+                        color='white',
+                        fill_color=layer_info["style"]["color"],
+                        fill_opacity=0.8
+                    ),
+                    popup=popup,
+                    tooltip=tooltip
+                )
+                gjson.add_to(mappa)
+
             except Exception as e:
                 st.warning(f"Impossibile caricare il livello '{layer_info['name']}'. Errore: {e}")
 
+    # --- Codice per marker e popup stazioni (invariato) ---
     def create_popup_html(row):
         html = """<style>.popup-container{font-family:Arial,sans-serif;font-size:13px;max-height:350px;overflow-y:auto;overflow-x:hidden}h4{margin-top:12px;margin-bottom:5px;color:#0057e7;border-bottom:1px solid #ccc;padding-bottom:3px}table{width:100%;border-collapse:collapse;margin-bottom:10px}td{text-align:left;padding:4px;border-bottom:1px solid #eee}td:first-child{font-weight:bold;color:#333;width:65%}td:last-child{color:#555}</style><div class="popup-container">"""
         groups = { "Info Stazione": ["Stazione", "DESCRIZIONE", "COMUNE", "ALTITUDINE"], "Dati Meteo": ["TEMPERATURA MEDIANA MINIMA", "TEMPERATURA MEDIANA", "UMIDITA MEDIA 7GG", "PIOGGE RESIDUA", "Piogge entro 5 gg", "Piogge entro 10 gg", "Totale Piogge Mensili"], "Analisi Base": ["MEDIA PORCINI CALDO BASE", "MEDIA PORCINI CALDO BOOST", "DURATA RANGE CALDO", "CONTEGGIO GG ALLA RACCOLTA CALDO", "MEDIA PORCINI FREDDO BASE", "MEDIA PORCINI FREDDO BOOST", "DURATA RANGE FREDDO", "CONTEGGIO GG ALLA RACCOLTA FREDDO"], "Analisi Sbalzo Migliore": ["SBALZO TERMICO MIGLIORE", "MEDIA PORCINI CALDO ST MIGLIORE", "MEDIA BOOST CALDO ST MIGLIORE", "GG ST MIGLIORE CALDO", "MEDIA PORCINI FREDDO ST MIGLIORE", "MEDIA BOOST FREDDO ST MIGLIORE", "GG ST MIGLIORE FREDDO"], "Analisi Sbalzo Secondo": ["SBALZO TERMICO SECONDO", "MEDIA PORCINI CALDO ST SECONDO", "MEDIA BOOST CALDO ST SECONDO", "GG ST SECONDO CALDO", "MEDIA PORCINI FREDDO ST SECONDO", "MEDIA BOOST FREDDO ST SECONDO", "GG ST SECONDO FREDDO"] }
@@ -169,10 +160,8 @@ if check_password():
             if has_content: html += f"<h4>{title}</h4>{table_html}"
         html += "</div>"
         return html
-        
     def get_marker_color(val):
         val = str(val).strip().upper(); return {"ROSSO": "red", "GIALLO": "yellow", "ARANCIONE": "orange", "VERDE": "green"}.get(val, "gray")
-        
     for _, row in df_mappa.iterrows():
         try:
             lat = float(str(row[COL_LAT]).replace(',', '.')); lon = float(str(row[COL_LON]).replace(',', '.'))
