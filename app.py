@@ -6,6 +6,7 @@ from datetime import datetime
 
 # --- 1. FUNZIONE DI CONTROLLO PASSWORD (INVARIATA) ---
 def check_password():
+    # ... (omesso per brevità, è identico a prima)
     """Restituisce True se l'utente è autenticato, altrimenti False."""
     def password_entered():
         if st.session_state["password"] == st.secrets["password"]:
@@ -67,36 +68,35 @@ if check_password():
         st.warning("Il DataFrame è vuoto o non è stato possibile caricarlo.")
         st.stop()
 
-    # --- NUOVA SEZIONE: PRE-ELABORAZIONE DATI PER FILTRI COMPLESSI ---
-    # Questa sezione divide le colonne "Sbalzo Termico" in due colonne separate: una numerica e una data
-    
+    # --- MODIFICA CHIAVE: PRE-ELABORAZIONE E INIZIALIZZAZIONE DATI ---
     sbalzo_cols_map = {
         "SBALZO TERMICO MIGLIORE": "Migliore",
         "SBALZO TERMICO SECONDO": "Secondo"
     }
-
     for col_originale, suffisso in sbalzo_cols_map.items():
         if col_originale in df.columns:
-            # Dividi la colonna in due parti usando ' - ' come separatore
             split_cols = df[col_originale].str.split(' - ', n=1, expand=True)
-            
-            # Crea la nuova colonna numerica
             col_numerica = f"Sbalzo Numerico {suffisso}"
             df[col_numerica] = pd.to_numeric(split_cols[0].str.replace(',', '.'), errors='coerce')
-
-            # Crea la nuova colonna data
             col_data = f"Data Sbalzo {suffisso}"
             df[col_data] = pd.to_datetime(split_cols[1], format='%d/%m/%Y', errors='coerce')
 
+            # --- NUOVA LOGICA DI INIZIALIZZAZIONE ---
+            # Riempi i valori numerici mancanti con 0
+            df[col_numerica] = df[col_numerica].fillna(0)
+
+            # Riempi le date mancanti con la data PIÙ VECCHIA trovata nella colonna
+            if not df[col_data].dropna().empty:
+                min_date_in_col = df[col_data].min()
+                df[col_data] = df[col_data].fillna(min_date_in_col)
 
     # --- Lista colonne per filtri standard ---
-    # Rimuoviamo le colonne "Sbalzo" da questa lista perché ora hanno filtri dedicati
     COLONNE_FILTRO = [
-        "TEMPERATURA MEDIANA", "PIOGGE RESIDUA",
-        "Piogge entro 5 gg", "Piogge entro 10 gg",
-        "MEDIA PORCINI CALDO BASE", "MEDIA PORCINI FREDDO BASE",
-        "MEDIA PORCINI CALDO ST MIGLIORE", "MEDIA PORCINI FREDDO ST MIGLIORE",
-        "MEDIA PORCINI CALDO ST SECONDO", "MEDIA PORCINI FREDDO ST SECONDO"
+        "UMIDITA MEDIA 7GG", "TEMPERATURA MEDIANA", "PIOGGE RESIDUA",
+        "Piogge entro 5 gg", "Piogge entro 10 gg", "MEDIA PORCINI CALDO BASE",
+        "MEDIA PORCINI CALDO BOOST", "MEDIA PORCINI FREDDO BASE",
+        "MEDIA PORCINI FREDDO BOOST", "MEDIA PORCINI CALDO ST MIGLIORE",
+        "MEDIA PORCINI FREDDO ST MIGLIORE"
     ]
     COLONNE_FILTRO_ESISTENTI = [col for col in COLONNE_FILTRO if col in df.columns]
 
@@ -116,19 +116,17 @@ if check_password():
     
     df_filtrato = df.copy()
 
-    # Ciclo per i filtri numerici standard
     for colonna in COLONNE_FILTRO_ESISTENTI:
         if not df[colonna].dropna().empty:
             min_val, max_val = float(df[colonna].min()), float(df[colonna].max())
             val_selezionato = st.sidebar.slider(
-                f"Filtra per {colonna}", min_val, max_val, (min_val, max_val)
+                f"Filtra per {colonna}", 0.0, max_val, (0.0, max_val)
             )
             df_filtrato = df_filtrato[
                 (df_filtrato[colonna].fillna(0) >= val_selezionato[0]) &
                 (df_filtrato[colonna].fillna(0) <= val_selezionato[1])
             ]
 
-    # --- NUOVA SEZIONE SIDEBAR: Filtri avanzati per Sbalzo Termico ---
     st.sidebar.markdown("---")
     st.sidebar.subheader("Filtri Sbalzo Termico")
 
@@ -140,7 +138,7 @@ if check_password():
             st.sidebar.markdown(f"**{suffisso}**")
             min_val, max_val = float(df_filtrato[col_numerica].min()), float(df_filtrato[col_numerica].max())
             val_selezionato = st.sidebar.slider(
-                f"Valore Sbalzo {suffisso}", min_val, max_val, (min_val, max_val)
+                f"Valore Sbalzo {suffisso}", 0.0, max_val, (0.0, max_val)
             )
             df_filtrato = df_filtrato[
                 (df_filtrato[col_numerica].fillna(0) >= val_selezionato[0]) &
@@ -156,8 +154,8 @@ if check_password():
                 max_value=max_data,
                 key=f"date_{suffisso}"
             )
+            # RIPRISTINO LOGICA DI FILTRO SEMPLICE: ora funziona perché non ci sono più date vuote
             if len(data_selezionata) == 2:
-                # Confrontiamo solo la parte "data" per evitare problemi di fuso orario/ore
                 df_filtrato = df_filtrato[
                     (df_filtrato[col_data].dt.date >= data_selezionata[0]) &
                     (df_filtrato[col_data].dt.date <= data_selezionata[1])
@@ -167,13 +165,14 @@ if check_password():
     st.sidebar.success(f"Visualizzati {len(df_filtrato.dropna(subset=[COL_LAT, COL_LON]))} marker sulla mappa.")
 
     # --- Preparazione e Visualizzazione Mappa (INVARIATA) ---
+    # ... (il resto del codice è identico e corretto)
     required_cols = [COL_LAT, COL_LON, COL_COLORE]
     if not all(col in df_filtrato.columns for col in required_cols):
         st.error(f"❌ Colonne necessarie non trovate! Controlla che nel file esistano '{COL_LAT}', '{COL_LON}' e '{COL_COLORE}'.")
         st.stop()
 
     df_mappa = df_filtrato.dropna(subset=[COL_LAT, COL_LON]).copy()
-    mappa = folium.Map(location=[43.5, 11.0], zoom_start=8)
+    mappa = folium.Map(location=[[43.5, 11.0]], zoom_start=8)
 
     def get_marker_color(val):
         val = str(val).strip().upper()
@@ -189,7 +188,6 @@ if check_password():
             
             popup_html = ""
             for col_name, col_value in row.items():
-                # Non mostriamo le colonne "virtuali" che abbiamo creato
                 if 'Sbalzo Numerico' not in col_name and 'Data Sbalzo' not in col_name:
                     if pd.notna(col_value) and str(col_value).strip() != "":
                         popup_html += f"<b>{col_name}</b>: {str(col_value)}<br>"
