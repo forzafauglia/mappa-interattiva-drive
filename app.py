@@ -1,9 +1,10 @@
 import streamlit as st
 import pandas as pd
 import folium
+from folium.plugins import Geocoder # <-- 1. NUOVO IMPORT
 from streamlit_folium import folium_static
 from datetime import datetime
-import requests # Aggiunta necessaria per caricare i dati dagli URL
+import requests
 
 # --- 1. FUNZIONE DI CONTROLLO PASSWORD (invariato) ---
 def check_password():
@@ -122,6 +123,12 @@ if check_password():
     if not all(col in df_filtrato.columns for col in required_cols): st.error(f"❌ Colonne necessarie non trovate!"); st.stop()
     df_mappa = df_filtrato.dropna(subset=[COL_LAT, COL_LON]).copy()
     mappa = folium.Map(location=[43.5, 11.0], zoom_start=8)
+
+    
+    # --- AGGIUNTA DEL BOX DI RICERCA LUOGHI ---
+    # Questa riga aggiunge la lente d'ingrandimento e la funzionalità di ricerca
+    Geocoder().add_to(mappa)
+    # -------------------------------------------
     
     # --- BLOCCO GEOJSON DEFINITIVO E A PROVA DI ERRORE ---
     for layer_info in layers_geojson:
@@ -215,3 +222,4 @@ if check_password():
         except (ValueError, TypeError): continue
             
     folium_static(mappa, width=1000, height=700)
+
