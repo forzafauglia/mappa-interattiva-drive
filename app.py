@@ -124,11 +124,16 @@ if check_password():
     df_mappa = df_filtrato.dropna(subset=[COL_LAT, COL_LON]).copy()
     mappa = folium.Map(location=[43.5, 11.0], zoom_start=8)
 
-    
-    # --- AGGIUNTA DEL BOX DI RICERCA LUOGHI ---
-    # Questa riga aggiunge la lente d'ingrandimento e la funzionalità di ricerca
-    Geocoder().add_to(mappa)
-    # -------------------------------------------
+    # --- AGGIUNTA DEL BOX DI RICERCA LUOGHI (Versione Personalizzata) ---
+    Geocoder(
+        collapsed=True,              # Il box di ricerca parte chiuso (solo icona)
+        placeholder='Cerca un indirizzo o un luogo...', # Testo in italiano
+        add_marker=True,             # Aggiunge un marker nel punto trovato
+        position='topright'          # Posiziona il widget in alto a destra
+    ).add_to(mappa)
+    # ----------------------------------------------------------------------
+
+
     
     # --- BLOCCO GEOJSON DEFINITIVO E A PROVA DI ERRORE ---
     for layer_info in layers_geojson:
@@ -222,4 +227,5 @@ if check_password():
         except (ValueError, TypeError): continue
             
     folium_static(mappa, width=1000, height=700)
+
 
