@@ -44,11 +44,15 @@ def check_password():
 @st.cache_resource
 def get_view_counter(): return {"count": 0}
 
+
 @st.cache_data(ttl=3600)
 def load_and_prepare_data(url: str):
+    # Creiamo il timestamp qui, così viene restituito insieme ai dati
+    load_timestamp = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
     try:
         df = pd.read_csv(url, na_values=["#N/D", "#N/A"], dtype=str, header=0, skiprows=[1])
-        df.attrs['last_loaded'] = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+        # Rimuoviamo la vecchia riga df.attrs
+        
         if isinstance(df.columns, pd.MultiIndex): 
             df.columns = ['_'.join(map(str, col)).strip() for col in df.columns.values]
         
@@ -82,17 +86,13 @@ def load_and_prepare_data(url: str):
             elif col not in TEXT_COLUMNS:
                 df[col] = pd.to_numeric(df[col].astype(str).str.replace(',', '.', regex=False), errors='coerce')
         
-        # --- LOGICA DI RIEMPIMENTO TEMPERATURE MANCANTI ---
         temp_cols_to_fill = ['TEMP_MIN', 'TEMP_MAX', 'TEMPERATURA_MEDIANA', 'TEMPERATURA_MEDIANA_MINIMA']
         df_source_temps = df[df['STAZIONE'].str.startswith('TOS', na=False)][['STAZIONE', 'DATA'] + temp_cols_to_fill].copy()
         
         df_merged = pd.merge(
-            df,
-            df_source_temps,
-            left_on=['LEGENDA', 'DATA'],
-            right_on=['STAZIONE', 'DATA'],
-            how='left',
-            suffixes=('', '_sorgente')
+            df, df_source_temps,
+            left_on=['LEGENDA', 'DATA'], right_on=['STAZIONE', 'DATA'],
+            how='left', suffixes=('', '_sorgente')
         )
         
         for col in temp_cols_to_fill:
@@ -101,21 +101,23 @@ def load_and_prepare_data(url: str):
 
         source_cols_to_drop = ['STAZIONE_sorgente'] + [f'{col}_sorgente' for col in temp_cols_to_fill if f'{col}_sorgente' in df_merged.columns]
         df = df_merged.drop(columns=source_cols_to_drop)
-        # --- FINE LOGICA DI RIEMPIMENTO ---
 
         df.dropna(subset=['LONGITUDINE', 'LATITUDINE', 'DATA'], inplace=True, how='any')
         
-        return df
+        # Restituiamo una tupla: il DataFrame e il timestamp
+        return df, load_timestamp
     except Exception as e:
         st.error(f"Errore critico durante il caricamento dei dati: {e}")
-        return None
+        # Restituiamo una tupla anche in caso di errore per coerenza
+        return None, None
 
 def create_map(tile, location=[43.8, 11.0], zoom=8):
     if "Stamen" in tile:
         return folium.Map(location=location, zoom_start=zoom, tiles=tile, attr='&copy; <a href="https://www.stadiamaps.com/" target="_blank">Stadia Maps</a> &copy; <a href="https://openmaptiles.org/" target="_blank">OpenMapTiles</a> &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors')
     return folium.Map(location=location, zoom_start=zoom, tiles=tile)
 
-def display_main_map(df):
+# SOSTITUISCI QUESTA FUNZIONE
+def display_main_map(df, last_loaded_ts): # <-- Nuovo argomento
     st.header("🗺️ Mappa Riepilogativa (Situazione Attuale)")
     last_date = df['DATA'].max()
     df_latest = df[df['DATA'] == last_date].copy()
@@ -131,8 +133,11 @@ def display_main_map(df):
     st.sidebar.subheader("Statistiche")
     counter = get_view_counter()
     st.sidebar.info(f"Visite totali: **{counter['count']}**")
-    st.sidebar.info(f"App aggiornata il: **{df.attrs['last_loaded']}**")
-    if 'LEGENDA_ULTIMO_AGGIORNAMENTO_SHEET' in df_latest.columns and not df_latest['LEGENDA_ULTIMO_AGGIORNamento_SHEET'].empty:
+    # Usa la variabile passata alla funzione, non più df.attrs
+    if last_loaded_ts:
+        st.sidebar.info(f"App aggiornata il: **{last_loaded_ts}**")
+        
+    if 'LEGENDA_ULTIMO_AGGIORNAMENTO_SHEET' in df_latest.columns and not df_latest['LEGENDA_ULTIMO_AGGIORNAMENTO_SHEET'].empty:
         st.sidebar.info(f"Sheet aggiornato il: **{df_latest['LEGENDA_ULTIMO_AGGIORNAMENTO_SHEET'].iloc[0]}**")
     
     st.sidebar.markdown("---")
@@ -165,6 +170,46 @@ def display_main_map(df):
 
     mappa = create_map(map_tile, location=st.session_state.map_center, zoom=st.session_state.map_zoom)
     Geocoder(collapsed=True, placeholder='Cerca un luogo...', add_marker=True).add_to(mappa)
+    
+    def create_popup_html(row):
+        html = """<style>.popup-container{font-family:Arial,sans-serif;font-size:13px;max-height:350px;overflow-y:auto;overflow-x:hidden}h4{margin-top:12px;margin-bottom:5px;color:#0057e7;border-bottom:1px solid #ccc;padding-bottom:3px}table{width:100%;border-collapse:collapse;margin-bottom:10px}td{text-align:left;padding:4px;border-bottom:1px solid #eee}td:first-child{font-weight:bold;color:#333;width:65%}td:last-child{color:#555}.btn-container{text-align:center;margin-top:15px;}.btn{background-color:#007bff;color:white;padding:8px 12px;border-radius:5px;text-decoration:none;font-weight:bold;}</style><div class="popup-container">"""
+        groups = { 
+            "Info Stazione": ["STAZIONE", "LEGENDA_DESCRIZIONE", "LEGENDA_COMUNE", "LEGENDA_ALTITUDINE"], 
+            "Dati Meteo": ["LEGENDA_TEMPERATURA_MEDIANA_MINIMA", "LEGENDA_TEMPERATURA_MEDIANA", "LEGENDA_UMIDITA_MEDIA_7GG", "LEGENDA_PIOGGE_RESIDUA", "LEGENDA_TOTALE_PIOGGE_MENSILI"], 
+            "Analisi Base": ["LEGENDA_MEDIA_PORCINI_CALDO_BASE", "LEGENDA_MEDIA_PORCINI_CALDO_BOOST", "LEGENDA_DURATA_RANGE_CALDO", "LEGENDA_CONTEGGIO_GG_ALLA_RACCOLTA_CALDO", "LEGENDA_MEDIA_PORCINI_FREDDO_BASE", "LEGENDA_MEDIA_PORCINI_FREDDO_BOOST", "LEGENDA_DURATA_RANGE_FREDDO", "LEGENDA_CONTEGGIO_GG_ALLA_RACCOLTA_FREDDO"], 
+            "Analisi Sbalzo Migliore": ["LEGENDA_SBALZO_TERMICO_MIGLIORE", "LEGENDA_MEDIA_PORCINI_CALDO_ST_MIGLIORE", "LEGENDA_MEDIA_BOOST_CALDO_ST_MIGLIORE", "LEGENDA_GG_ST_MIGLIORE_CALDO", "LEGENDA_MEDIA_PORCINI_FREDDO_ST_MIGLIORE", "LEGENDA_MEDIA_BOOST_FREDDO_ST_MIGLIORE", "LEGENDA_GG_ST_MIGLIORE_FREDDO"], 
+            "Analisi Sbalzo Secondo": ["LEGENDA_SBALZO_TERMICO_SECONDO", "LEGENDA_MEDIA_PORCINI_CALDO_ST_SECONDO", "LEGENDA_MEDIA_BOOST_CALDO_ST_SECONDO", "LEGENDA_GG_ST_SECONDO_CALDO", "LEGENDA_MEDIA_PORCINI_FREDDO_ST_SECONDO", "LEGENDA_MEDIA_BOOST_FREDDO_ST_SECONDO", "LEGENDA_GG_ST_SECONDO_FREDDO"] 
+        }
+        for title, columns in groups.items():
+            table_html = "<table>"; has_content = False
+            for col_name_actual in columns:
+                if col_name_actual in row.index and pd.notna(row[col_name_actual]) and str(row[col_name_actual]).strip() != '':
+                    has_content = True; value = row[col_name_actual]
+                    col_name_label = col_name_actual.replace('LEGENDA_', '').replace('_', ' ').title()
+                    if isinstance(value, (int, float)): value_str = f"{value:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+                    else: value_str = str(value)
+                    table_html += f"<tr><td>{col_name_label}</td><td>{value_str}</td></tr>"
+            table_html += "</table>"
+            if has_content: html += f"<h4>{title}</h4>{table_html}"
+        station_name_for_url = row['STAZIONE']; link = f'?station={station_name_for_url}'; html += f'<div class="btn-container"><a href="{link}" target="_self" class="btn">📈 Mostra Storico Stazione</a></div>'; html += "</div>"
+        return html
+    
+    def get_marker_color(val): return {"ROSSO": "red", "GIALLO": "yellow", "ARANCIONE": "orange", "VERDE": "green"}.get(str(val).strip().upper(), "gray")
+    
+    for _, row in df_mappa.iterrows():
+        try:
+            lat, lon = float(row['LONGITUDINE']), float(row['LATITUDINE'])
+            colore = get_marker_color(row.get('LEGENDA_COLORE', 'gray'))
+            popup_html = create_popup_html(row)
+            folium.CircleMarker(location=[lat, lon], radius=6, color=colore, fill=True, fill_color=colore, fill_opacity=0.9, popup=folium.Popup(popup_html, max_width=380)).add_to(mappa)
+        except (ValueError, TypeError): 
+            continue
+            
+    map_data = folium_static(mappa, width=1000, height=700)
+
+    if map_data and 'center' in map_data and 'zoom' in map_data:
+        st.session_state.map_center = map_data['center']
+        st.session_state.map_zoom = map_data['zoom']
     
     def create_popup_html(row):
         html = """<style>.popup-container{font-family:Arial,sans-serif;font-size:13px;max-height:350px;overflow-y:auto;overflow-x:hidden}h4{margin-top:12px;margin-bottom:5px;color:#0057e7;border-bottom:1px solid #ccc;padding-bottom:3px}table{width:100%;border-collapse:collapse;margin-bottom:10px}td{text-align:left;padding:4px;border-bottom:1px solid #eee}td:first-child{font-weight:bold;color:#333;width:65%}td:last-child{color:#555}.btn-container{text-align:center;margin-top:15px;}.btn{background-color:#007bff;color:white;padding:8px 12px;border-radius:5px;text-decoration:none;font-weight:bold;}</style><div class="popup-container">"""
@@ -384,34 +429,33 @@ def main():
     st.set_page_config(page_title="Mappa Funghi Protetta", layout="wide")
     st.title("💧 Analisi Meteo Funghi – by Bobo 🍄")
     query_params = st.query_params
-    df = load_and_prepare_data(SHEET_URL)
-    if df is None or df.empty: st.warning("Dati non disponibili o caricamento fallito."); st.stop()
     
-    # Gestione del routing basata sui parametri URL
+    # Ora la funzione restituisce due valori: il dataframe e il timestamp
+    df, last_loaded_ts = load_and_prepare_data(SHEET_URL)
+    
+    if df is None or df.empty: 
+        st.warning("Dati non disponibili o caricamento fallito."); st.stop()
+    
     if "station" in query_params:
-        # Se c'è il parametro 'station', mostra la vista dettaglio
-        # Il check password viene saltato se si accede direttamente a un link
-        # Se si vuole forzare il login anche qui, il check andrebbe spostato prima di questo if
         display_station_detail(df, query_params["station"])
     else:
-        # Altrimenti, mostra la vista principale (mappa o analisi)
         if check_password():
             counter = get_view_counter()
-            # Questo piccolo trucco serve a incrementare il contatore solo al primo login
             if 'just_logged_in' not in st.session_state:
                 counter["count"] += 1
                 st.session_state['just_logged_in'] = False
 
             mode = st.radio("Seleziona la modalità:", ["Mappa Riepilogativa", "Analisi di Periodo"], horizontal=True, key="main_mode_selector")
             
-            # Pulisce lo stato 'just_logged_in' se l'utente naviga, così non conta più visite
             if 'just_logged_in' in st.session_state:
                 del st.session_state['just_logged_in']
 
             if mode == "Mappa Riepilogativa": 
-                display_main_map(df)
+                # Passiamo il timestamp alla funzione della mappa
+                display_main_map(df, last_loaded_ts)
             elif mode == "Analisi di Periodo": 
                 display_period_analysis(df)
 
 if __name__ == "__main__":
     main()
+
