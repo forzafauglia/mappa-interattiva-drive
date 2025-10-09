@@ -177,7 +177,7 @@ def display_period_analysis(df):
             config={'displayModeBar': False}; html_chart = fig.to_html(full_html=False, include_plotlyjs='cdn', config=config)
             
             link = f'?station={row["STAZIONE"]}'
-            html_button = f"""<div style='text-align:center; margin-top:10px;'><a href='{link}' target='_self' class='btn' style='background-color:#28a745;color:white;padding:8px 12px;border-radius:5px;text-decoration:none;font-weight:bold;font-family:Arial,sans-serif;font-size:13px;'>📈 Mostra Storico</a></div>"""
+            html_button = f"""<div style='text-align:center; margin-top:10px;'><a href='{link}' target='_top' class='btn' style='background-color:#28a745;color:white;padding:8px 12px;border-radius:5px;text-decoration:none;font-weight:bold;font-family:Arial,sans-serif;font-size:13px;'>📈 Mostra Storico</a></div>"""
             full_html_popup = f"<div>{html_chart}{html_button}</div>"
             iframe = folium.IFrame(full_html_popup, width=280, height=260); 
             popup = folium.Popup(iframe, max_width=300, parse_html=True)
@@ -276,5 +276,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
