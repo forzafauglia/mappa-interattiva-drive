@@ -161,7 +161,7 @@ def display_period_analysis(df):
 
     st.info(f"Visualizzando **{len(df_agg_filtered)}** stazioni che corrispondono ai filtri.")
     
-    if not df_agg_filtered.empty: map_center = [df_agg_filtered['LATITUDINE'].mean(), df_agg_filtered['LONGITUDINE'].mean()]
+    if not df_agg_filtered.empty: map_center = [df_agg_filtered['LONGITUDINE'].mean(), df_agg_filtered['LATITUDINE'].mean()]
     else: map_center = [43.8, 11.0]
     mappa = create_map(map_tile, location=map_center, zoom=8)
     
@@ -182,7 +182,7 @@ def display_period_analysis(df):
             iframe = folium.IFrame(full_html_popup, width=280, height=260); 
             popup = folium.Popup(iframe, max_width=300, parse_html=True)
             
-            lat, lon = float(row['LATITUDINE']), float(row['LONGITUDINE'])
+            lat, lon = float(row['LONGITUDINE']), float(row['LATITUDINE'])
             color = colormap(row['TOTALE_PIOGGIA_GIORNO'])
             tooltip_text = (f"Stazione: {row['STAZIONE']}<br>Pioggia: {row['TOTALE_PIOGGIA_GIORNO']:.1f} mm<br>T.Max: {row.get('MEDIA_TEMP_MAX', 0.0):.1f}°C<br>T.Min: {row.get('MEDIA_TEMP_MIN', 0.0):.1f}°C")
             folium.CircleMarker(location=[lat, lon], radius=8, color=color, fill=True, fill_color=color, fill_opacity=0.7, popup=popup, tooltip=tooltip_text).add_to(mappa)
@@ -276,4 +276,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
