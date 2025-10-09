@@ -40,12 +40,15 @@ def load_and_prepare_data(url: str):
     try:
         df = pd.read_csv(url, na_values=["#N/D", "#N/A"], dtype=str, header=0, skiprows=[1])
         if isinstance(df.columns, pd.MultiIndex): df.columns = ['_'.join(map(str, col)).strip() for col in df.columns.values]
+        
+        # --- FIX DEFINITIVO PER LA PULIZIA DEI NOMI COLONNA ---
         cleaned_cols = {}
         for col in df.columns:
-            cleaned_name = re.sub(r'\[.*?\]|\(.*?\)|\'', '', str(col)).strip().replace(' ', '_').upper()
-            if col.upper().startswith('LEGENDA_'): base_name = re.sub(r'^LEGENDA_', '', cleaned_name); cleaned_cols[col] = f"LEGENDA_{base_name}"
-            else: cleaned_cols[col] = cleaned_name
+            temp_name = str(col).replace('[', '').replace(']', '').replace('(', '').replace(')', '').replace("'", "")
+            cleaned_name = temp_name.strip().replace(' ', '_').upper()
+            cleaned_cols[col] = cleaned_name
         df.rename(columns=cleaned_cols, inplace=True)
+
         df = df.loc[:, ~df.columns.duplicated()]
         for sbalzo_col, suffisso in [("LEGENDA_SBALZO_TERMICO_MIGLIORE", "MIGLIORE"), ("LEGENDA_SBALZO_TERMICO_SECONDO", "SECONDO")]:
             if sbalzo_col in df.columns:
@@ -57,16 +60,6 @@ def load_and_prepare_data(url: str):
             if col == 'DATA': df[col] = pd.to_datetime(df[col], errors='coerce', dayfirst=True)
             elif col not in TEXT_COLUMNS: df[col] = pd.to_numeric(df[col].astype(str).str.replace(',', '.', regex=False), errors='coerce')
         
-        # --- NUOVA MODIFICA: inversione coordinate se riconosciuta ---
-        # (In Toscana la latitudine deve essere tra 42 e 45, longitudine tra 9 e 12)
-        if 'LATITUDINE' in df.columns and 'LONGITUDINE' in df.columns and not df.empty:
-            # Calcola la media solo sulle righe valide
-            lat_mean = pd.to_numeric(df['LATITUDINE'], errors='coerce').mean()
-            lon_mean = pd.to_numeric(df['LONGITUDINE'], errors='coerce').mean()
-            if lon_mean > lat_mean:  # Heuristica per la Toscana
-                df.rename(columns={'LATITUDINE': 'LONG_TMP', 'LONGITUDINE': 'LATITUDINE'}, inplace=True)
-                df.rename(columns={'LONG_TMP': 'LONGITUDINE'}, inplace=True)
-
         temp_cols_to_fill = ['TEMP_MIN', 'TEMP_MAX', 'TEMPERATURA_MEDIANA', 'TEMPERATURA_MEDIANA_MINIMA']
         df_source_temps = df[df['STAZIONE'].str.startswith('TOS', na=False)][['STAZIONE', 'DATA'] + temp_cols_to_fill].copy()
         df_merged = pd.merge(df, df_source_temps, left_on=['LEGENDA', 'DATA'], right_on=['STAZIONE', 'DATA'], how='left', suffixes=('', '_sorgente'))
@@ -112,7 +105,6 @@ def display_main_map(df, last_loaded_ts):
     mappa = create_map(map_tile); Geocoder(collapsed=True, placeholder='Cerca un luogo...', add_marker=True).add_to(mappa)
     
     def create_popup_html(row):
-        # --- FIX: Ripristinato lo stile completo del popup ---
         html = """<style>.popup-container{font-family:Arial,sans-serif;font-size:13px;max-height:350px;overflow-y:auto;overflow-x:hidden}h4{margin-top:12px;margin-bottom:5px;color:#0057e7;border-bottom:1px solid #ccc;padding-bottom:3px}table{width:100%;border-collapse:collapse;margin-bottom:10px}td{text-align:left;padding:4px;border-bottom:1px solid #eee}td:first-child{font-weight:bold;color:#333;width:65%}td:last-child{color:#555}.btn-container{text-align:center;margin-top:15px;}.btn{background-color:#007bff;color:white;padding:8px 12px;border-radius:5px;text-decoration:none;font-weight:bold;}</style><div class="popup-container">"""
         groups = {"Info Stazione": ["STAZIONE", "LEGENDA_DESCRIZIONE", "LEGENDA_COMUNE", "LEGENDA_ALTITUDINE"], "Dati Meteo": ["LEGENDA_TEMPERATURA_MEDIANA_MINIMA", "LEGENDA_TEMPERATURA_MEDIANA", "LEGENDA_UMIDITA_MEDIA_7GG", "LEGENDA_PIOGGE_RESIDUA", "LEGENDA_TOTALE_PIOGGE_MENSILI"], "Analisi Base": ["LEGENDA_MEDIA_PORCINI_CALDO_BASE", "LEGENDA_MEDIA_PORCINI_CALDO_BOOST", "LEGENDA_DURATA_RANGE_CALDO", "LEGENDA_CONTEGGIO_GG_ALLA_RACCOLTA_CALDO", "LEGENDA_MEDIA_PORCINI_FREDDO_BASE", "LEGENDA_MEDIA_PORCINI_FREDDO_BOOST", "LEGENDA_DURATA_RANGE_FREDDO", "LEGENDA_CONTEGGIO_GG_ALLA_RACCOLTA_FREDDO"], "Analisi Sbalzo Migliore": ["LEGENDA_SBALZO_TERMICO_MIGLIORE", "LEGENDA_MEDIA_PORCINI_CALDO_ST_MIGLIORE", "LEGENDA_MEDIA_BOOST_CALDO_ST_MIGLIORE", "LEGENDA_GG_ST_MIGLIORE_CALDO", "LEGENDA_MEDIA_PORCINI_FREDDO_ST_MIGLIORE", "LEGENDA_MEDIA_BOOST_FREDDO_ST_MIGLIORE", "LEGENDA_GG_ST_MIGLIORE_FREDDO"], "Analisi Sbalzo Secondo": ["LEGENDA_SBALZO_TERMICO_SECONDO", "LEGENDA_MEDIA_PORCINI_CALDO_ST_SECONDO", "LEGENDA_MEDIA_BOOST_CALDO_ST_SECONDO", "LEGENDA_GG_ST_SECONDO_CALDO", "LEGENDA_MEDIA_PORCINI_FREDDO_ST_SECONDO", "LEGENDA_MEDIA_BOOST_FREDDO_ST_SECONDO", "LEGENDA_GG_ST_SECONDO_FREDDO"]}
         for title, columns in groups.items():
@@ -131,10 +123,9 @@ def display_main_map(df, last_loaded_ts):
     
     for _, row in df_mappa.iterrows():
         try:
-            # Ripristinata la logica originale delle coordinate
             lat, lon = float(row['LONGITUDINE']), float(row['LATITUDINE'])
             colore = get_marker_color(row.get('LEGENDA_COLORE', 'gray')); popup_html = create_popup_html(row)
-            folium.CircleMarker(location=[lat, lon], radius=6, color=colore, fill=True, fill_color=colore, fill_opacity=0.9, popup=folium.Popup(popup_html, max_width=380, parse_html=True)).add_to(mappa)
+            folium.CircleMarker(location=[lat, lon], radius=6, color=colore, fill=True, fill_color=colore, fill_opacity=0.9, popup=folium.Popup(popup_html, max_width=380)).add_to(mappa)
         except (ValueError, TypeError): continue
     folium_static(mappa, width=1000, height=700)
 
@@ -164,17 +155,14 @@ def display_period_analysis(df):
         tmed_range = st.sidebar.slider("Temp. Mediana Media (°C)", 0.0, max_tmed, (0.0, max_tmed))
 
         df_agg_filtered = df_agg[df_agg['TOTALE_PIOGGIA_GIORNO'].between(rain_range[0], rain_range[1])]
-        if df_agg_filtered['MEDIA_TEMP_MAX'].notna().any(): df_agg_filtered = df_agg_filtered[df_agg_filtered['MEDIA_TEMP_MAX'].between(tmax_range[0], tmax_range[1])]
-        if df_agg_filtered['MEDIA_TEMP_MIN'].notna().any(): df_agg_filtered = df_agg_filtered[df_agg_filtered['MEDIA_TEMP_MIN'].between(tmin_range[0], tmin_range[1])]
-        if df_agg_filtered['MEDIA_TEMP_MEDIANA'].notna().any(): df_agg_filtered = df_agg_filtered[df_agg_filtered['MEDIA_TEMP_MEDIANA'].between(tmed_range[0], tmed_range[1])]
+        if 'MEDIA_TEMP_MAX' in df_agg_filtered.columns and df_agg_filtered['MEDIA_TEMP_MAX'].notna().any(): df_agg_filtered = df_agg_filtered[df_agg_filtered['MEDIA_TEMP_MAX'].between(tmax_range[0], tmax_range[1])]
+        if 'MEDIA_TEMP_MIN' in df_agg_filtered.columns and df_agg_filtered['MEDIA_TEMP_MIN'].notna().any(): df_agg_filtered = df_agg_filtered[df_agg_filtered['MEDIA_TEMP_MIN'].between(tmin_range[0], tmin_range[1])]
+        if 'MEDIA_TEMP_MEDIANA' in df_agg_filtered.columns and df_agg_filtered['MEDIA_TEMP_MEDIANA'].notna().any(): df_agg_filtered = df_agg_filtered[df_agg_filtered['MEDIA_TEMP_MEDIANA'].between(tmed_range[0], tmed_range[1])]
 
     st.info(f"Visualizzando **{len(df_agg_filtered)}** stazioni che corrispondono ai filtri.")
     
-    if not df_agg_filtered.empty:
-        # --- FIX CENTRAGGIO MAPPA ---
-        map_center = [df_agg_filtered['LATITUDINE'].mean(), df_agg_filtered['LONGITUDINE'].mean()]
-    else:
-        map_center = [43.8, 11.0] # Default sulla Toscana
+    if not df_agg_filtered.empty: map_center = [df_agg_filtered['LATITUDINE'].mean(), df_agg_filtered['LONGITUDINE'].mean()]
+    else: map_center = [43.8, 11.0]
     mappa = create_map(map_tile, location=map_center, zoom=8)
     
     if df_agg_filtered.empty: 
@@ -188,14 +176,12 @@ def display_period_analysis(df):
             fig.update_layout(title_text=f"<b>{row['STAZIONE']}</b>", title_font_size=14, yaxis_title="mm", width=250, height=200, margin=dict(l=40,r=20,t=40,b=20), showlegend=False)
             config={'displayModeBar': False}; html_chart = fig.to_html(full_html=False, include_plotlyjs='cdn', config=config)
             
-            # --- FIX: Link funzionante anche qui ---
             link = f'?station={row["STAZIONE"]}'
             html_button = f"""<div style='text-align:center; margin-top:10px;'><a href='{link}' target='_self' class='btn' style='background-color:#28a745;color:white;padding:8px 12px;border-radius:5px;text-decoration:none;font-weight:bold;font-family:Arial,sans-serif;font-size:13px;'>📈 Mostra Storico</a></div>"""
             full_html_popup = f"<div>{html_chart}{html_button}</div>"
             iframe = folium.IFrame(full_html_popup, width=280, height=260); 
-            popup = folium.Popup(iframe, max_width=300, parse_html=True) # Aggiunto parse_html=True
+            popup = folium.Popup(iframe, max_width=300, parse_html=True)
             
-            # Ripristinata la logica originale delle coordinate
             lat, lon = float(row['LONGITUDINE']), float(row['LATITUDINE'])
             color = colormap(row['TOTALE_PIOGGIA_GIORNO'])
             tooltip_text = (f"Stazione: {row['STAZIONE']}<br>Pioggia: {row['TOTALE_PIOGGIA_GIORNO']:.1f} mm<br>T.Max: {row.get('MEDIA_TEMP_MAX', 0.0):.1f}°C<br>T.Min: {row.get('MEDIA_TEMP_MIN', 0.0):.1f}°C")
