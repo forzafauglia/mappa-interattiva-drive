@@ -59,28 +59,26 @@ def load_and_prepare_data(url: str):
 
         TEXT_COLUMNS = ['STAZIONE', 'LEGENDA_DESCRIZIONE', 'LEGENDA_COMUNE', 'LEGENDA_COLORE', 'LEGENDA_ULTIMO_AGGIORNAMENTO_SHEET', 'LEGENDA_SBALZO_TERMICO_MIGLIORE', 'LEGENDA_SBALZO_TERMICO_SECONDO', 'PORCINI_CALDO_NOTE', 'PORCINI_FREDDO_NOTE', 'SBALZO_TERMICO_MIGLIORE', '2°_SBALZO_TERMICO_MIGLIORE', 'LEGENDA']
         for col in df.columns:
-            if col == 'DATA':
-                df[col] = pd.to_datetime(df[col], errors='coerce', dayfirst=True)
-            elif col not in TEXT_COLUMNS:
-                df[col] = pd.to_numeric(df[col].astype(str).str.replace(',', '.', regex=False), errors='coerce')
+            if col == 'DATA': df[col] = pd.to_datetime(df[col], errors='coerce', dayfirst=True)
+            elif col not in TEXT_COLUMNS: df[col] = pd.to_numeric(df[col].astype(str).str.replace(',', '.', regex=False), errors='coerce')
         
         temp_cols_to_fill = ['TEMP_MIN', 'TEMP_MAX', 'TEMPERATURA_MEDIANA', 'TEMPERATURA_MEDIANA_MINIMA']
         df_source_temps = df[df['STAZIONE'].str.startswith('TOS', na=False)][['STAZIONE', 'DATA'] + temp_cols_to_fill].copy()
         df_merged = pd.merge(df, df_source_temps, left_on=['LEGENDA', 'DATA'], right_on=['STAZIONE', 'DATA'], how='left', suffixes=('', '_sorgente'))
         for col in temp_cols_to_fill:
-            if f'{col}_sorgente' in df_merged.columns:
-                df_merged[col] = df_merged[col].fillna(df_merged[f'{col}_sorgente'])
+            if f'{col}_sorgente' in df_merged.columns: df_merged[col] = df_merged[col].fillna(df_merged[f'{col}_sorgente'])
         source_cols_to_drop = ['STAZIONE_sorgente'] + [f'{col}_sorgente' for col in temp_cols_to_fill if f'{col}_sorgente' in df_merged.columns]
         df = df_merged.drop(columns=source_cols_to_drop)
         
         df.dropna(subset=['LONGITUDINE', 'LATITUDINE', 'DATA'], inplace=True, how='any')
         return df, load_timestamp
     except Exception as e:
-        st.error(f"Errore critico durante il caricamento dei dati: {e}")
-        return None, None
+        st.error(f"Errore critico durante il caricamento dei dati: {e}"); return None, None
 
 def create_map(tile, location=[43.8, 11.0], zoom=8):
     return folium.Map(location=location, zoom_start=zoom, tiles=tile)
+
+### FUNZIONI DI VISUALIZZAZIONE ###
 
 def display_main_map(df, last_loaded_ts):
     st.header("🗺️ Mappa Riepilogativa (Situazione Attuale)")
@@ -92,17 +90,14 @@ def display_main_map(df, last_loaded_ts):
     st.sidebar.markdown("---")
     map_tile_options = ["OpenStreetMap", "CartoDB positron"]
     map_tile = st.sidebar.selectbox("Tipo di mappa:", map_tile_options, key="tile_main")
-    st.sidebar.markdown("---")
-    st.sidebar.subheader("Statistiche")
+    st.sidebar.markdown("---"); st.sidebar.subheader("Statistiche")
     counter = get_view_counter()
     st.sidebar.info(f"Visite totali: **{counter['count']}**")
-    if last_loaded_ts:
-        st.sidebar.info(f"App aggiornata il: **{last_loaded_ts}**")
+    if last_loaded_ts: st.sidebar.info(f"App aggiornata il: **{last_loaded_ts}**")
     if 'LEGENDA_ULTIMO_AGGIORNAMENTO_SHEET' in df_latest.columns and not df_latest['LEGENDA_ULTIMO_AGGIORNAMENTO_SHEET'].empty:
         st.sidebar.info(f"Sheet aggiornato il: **{df_latest['LEGENDA_ULTIMO_AGGIORNAMENTO_SHEET'].iloc[0]}**")
     
-    st.sidebar.markdown("---")
-    st.sidebar.subheader("Filtri Dati Standard")
+    st.sidebar.markdown("---"); st.sidebar.subheader("Filtri Dati Standard")
     df_filtrato = df_latest.copy()
     for colonna in COLONNE_FILTRO_RIEPILOGO:
         if colonna in df_filtrato.columns and not df_filtrato[colonna].dropna().empty:
@@ -111,16 +106,14 @@ def display_main_map(df, last_loaded_ts):
             val_selezionato = st.sidebar.slider(f"Filtra per {slider_label}", 0.0, max_val, (0.0, max_val))
             df_filtrato = df_filtrato[df_filtrato[colonna].fillna(0).between(val_selezionato[0], val_selezionato[1])]
     
-    st.sidebar.markdown("---")
-    st.sidebar.subheader("Filtri Sbalzo Termico")
+    st.sidebar.markdown("---"); st.sidebar.subheader("Filtri Sbalzo Termico")
     for sbalzo_col, suffisso in [("LEGENDA_SBALZO_NUMERICO_MIGLIORE", "Migliore"), ("LEGENDA_SBALZO_NUMERICO_SECONDO", "Secondo")]:
         if sbalzo_col in df_filtrato.columns and not df_filtrato[sbalzo_col].dropna().empty:
             max_val = float(df_filtrato[sbalzo_col].max())
             val_selezionato = st.sidebar.slider(f"Sbalzo Termico {suffisso}", 0.0, max_val, (0.0, max_val))
             df_filtrato = df_filtrato[df_filtrato[sbalzo_col].fillna(0).between(val_selezionato[0], val_selezionato[1])]
     
-    st.sidebar.markdown("---")
-    st.sidebar.success(f"Visualizzati {len(df_filtrato)} marker sulla mappa.")
+    st.sidebar.markdown("---"); st.sidebar.success(f"Visualizzati {len(df_filtrato)} marker sulla mappa.")
     df_mappa = df_filtrato.dropna(subset=['LATITUDINE', 'LONGITUDINE']).copy()
 
     if 'map_center' not in st.session_state: st.session_state.map_center = [43.8, 11.0]
@@ -144,7 +137,7 @@ def display_main_map(df, last_loaded_ts):
             table_html += "</table>"
             if has_content: html += f"<h4>{title}</h4>{table_html}"
         link = f'?station={row["STAZIONE"]}'
-        html += f"""<div class='btn-container'><a href='#' onclick="window.top.location.href='{link}'; return false;" class='btn'>📈 Mostra Storico Stazione</a></div></div>"""
+        html += f"""<div class='btn-container'><a href='{link}' target='_top' class='btn'>📈 Mostra Storico Stazione</a></div></div>"""
         return html
     
     def get_marker_color(val): return {"ROSSO": "red", "GIALLO": "yellow", "ARANCIONE": "orange", "VERDE": "green"}.get(str(val).strip().upper(), "gray")
@@ -159,8 +152,7 @@ def display_main_map(df, last_loaded_ts):
     
     map_data = folium_static(mappa, width=1000, height=700)
     if isinstance(map_data, dict) and 'center' in map_data and 'zoom' in map_data:
-        st.session_state.map_center = map_data['center']
-        st.session_state.map_zoom = map_data['zoom']
+        st.session_state.map_center = map_data['center']; st.session_state.map_zoom = map_data['zoom']
 
 def display_period_analysis(df):
     st.header("📊 Analisi di Periodo con Dati Aggregati")
@@ -200,7 +192,7 @@ def display_period_analysis(df):
     if df_agg_filtered.empty: st.warning("Nessuna stazione corrisponde ai filtri selezionati."); return
     
     default_center = [43.8, 11.0]
-    map_center = [df_agg_filtered['LONGITUDINE'].mean(), df_agg_filtered['LATITUDINE'].mean()] if not df_agg_filtered.empty else default_center
+    map_center = [df_agg_filtered['LATITUDINE'].mean(), df_agg_filtered['LONGITUDINE'].mean()] if not df_agg_filtered.empty else default_center
     mappa = create_map(map_tile, location=map_center, zoom=8)
     min_rain, max_rain = df_agg_filtered['TOTALE_PIOGGIA_GIORNO'].min(), df_agg_filtered['TOTALE_PIOGGIA_GIORNO'].max()
     colormap = linear.YlGnBu_09.scale(vmin=min_rain, vmax=max_rain if max_rain > min_rain else min_rain + 1)
@@ -212,7 +204,7 @@ def display_period_analysis(df):
         config = {'displayModeBar': False}; html_chart = fig.to_html(full_html=False, include_plotlyjs='cdn', config=config)
         
         link = f'?station={row["STAZIONE"]}'
-        html_button = f"""<div style='text-align:center; margin-top:10px;'><a href='#' onclick="window.top.location.href='{link}'; return false;" style='background-color:#28a745;color:white;padding:8px 12px;border-radius:5px;text-decoration:none;font-weight:bold;font-family:Arial,sans-serif;font-size:13px;'>📈 Mostra Storico</a></div>"""
+        html_button = f"""<div style='text-align:center; margin-top:10px;'><a href='{link}' target='_top' style='background-color:#28a745;color:white;padding:8px 12px;border-radius:5px;text-decoration:none;font-weight:bold;font-family:Arial,sans-serif;font-size:13px;'>📈 Mostra Storico</a></div>"""
         full_html_popup = f"<div>{html_chart}{html_button}</div>"
         
         iframe = folium.IFrame(full_html_popup, width=280, height=260)
@@ -226,7 +218,6 @@ def display_period_analysis(df):
     folium_static(mappa, width=1000, height=700)
     with st.expander("Vedi dati aggregati filtrati"): st.dataframe(df_agg_filtered)
 
-# --- FUNZIONI REINSERITE ---
 def add_sbalzo_line(fig, df_data, sbalzo_col_name, label):
     if sbalzo_col_name not in df_data.columns: return
     df_valid_sbalzo = df_data.dropna(subset=[sbalzo_col_name])
@@ -243,16 +234,13 @@ def add_sbalzo_line(fig, df_data, sbalzo_col_name, label):
             except ValueError: continue
 
 def display_station_detail(df, station_name):
-    if st.button("⬅️ Torna alla Mappa Riepilogativa"):
-        st.query_params.clear()
+    if st.button("⬅️ Torna alla Mappa Riepilogativa"): st.query_params.clear()
     st.header(f"📈 Storico Dettagliato: {station_name}")
     df_station = df[df['STAZIONE'] == station_name].sort_values('DATA').copy()
     if df_station.empty: st.error("Dati non trovati per la stazione selezionata."); return
 
-    if not df_station.empty:
-        end_date_default = df_station['DATA'].max(); start_date_default = end_date_default - pd.Timedelta(days=39)
-    else:
-        end_date_default = datetime.now(); start_date_default = end_date_default - pd.Timedelta(days=39)
+    if not df_station.empty: end_date_default = df_station['DATA'].max(); start_date_default = end_date_default - pd.Timedelta(days=39)
+    else: end_date_default = datetime.now(); start_date_default = end_date_default - pd.Timedelta(days=39)
     config_chart = {'toImageButtonOptions': {'format': 'png', 'scale': 2, 'filename': f'grafico_{station_name}'}, 'displaylogo': False}
 
     st.subheader("Andamento Precipitazioni Giornaliere")
@@ -296,7 +284,8 @@ def display_station_detail(df, station_name):
             st.markdown("""<style>div[data-testid="stDataFrame"] { overflow-x: auto; }</style>""", unsafe_allow_html=True)
             st.dataframe(df_station[selected_cols].sort_values('DATA', ascending=False))
         else: st.info("Seleziona almeno una colonna per visualizzare i dati.")
-# --- FINE FUNZIONI REINSERITE ---
+
+### FUNZIONE PRINCIPALE (ROUTER) ###
 
 def main():
     st.set_page_config(page_title="Mappa Funghi Protetta", layout="wide")
@@ -305,9 +294,12 @@ def main():
     df, last_loaded_ts = load_and_prepare_data(SHEET_URL)
     if df is None or df.empty: st.warning("Dati non disponibili o caricamento fallito."); st.stop()
     
+    # Questa logica di routing è il cuore dell'app
     if "station" in query_params:
+        # Se l'URL contiene ?station=... mostra la pagina di dettaglio
         display_station_detail(df, query_params["station"])
     else:
+        # Altrimenti, mostra la pagina principale con le mappe
         if check_password():
             counter = get_view_counter()
             if 'just_logged_in' not in st.session_state:
