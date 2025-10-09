@@ -14,7 +14,8 @@ from branca.colormap import linear
 # --- 2. CONFIGURAZIONE CENTRALE E FUNZIONI DI BASE ---
 SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRxitMYpUqvX6bxVaukG01lJDC8SUfXtr47Zv5ekR1IzfR1jmhUilBsxZPJ8hrktVHrBh6hUUWYUtox/pub?output=csv"
 
-COLONNE_FILTRO_RIEPILogo = [
+# --- FIX: CORRETTO ERRORE DI BATTITURA DA "RIEPILogo" a "RIEPILOGO" ---
+COLONNE_FILTRO_RIEPILOGO = [
     "LEGENDA_TEMPERATURA_MEDIANA", "LEGENDA_PIOGGE_RESIDUA", "LEGENDA_MEDIA_PORCINI_CALDO_BASE", "LEGENDA_MEDIA_PORCINI_FREDDO_BASE",
     "LEGENDA_MEDIA_PORCINI_CALDO_ST_MIGLIORE", "LEGENDA_MEDIA_PORCINI_FREDDO_ST_MIGLIORE",
     "LEGENDA_MEDIA_PORCINI_CALDO_ST_SECONDO", "LEGENDA_MEDIA_PORCINI_FREDDO_ST_SECONDO"
@@ -157,6 +158,7 @@ def display_period_analysis(df):
     
     df_agg_filtered = df_agg.copy()
     st.sidebar.subheader("Filtri Dati Aggregati")
+    # Applica i filtri solo se ci sono dati su cui filtrare
     if not df_agg_filtered.empty:
         max_rain = float(df_agg_filtered['TOTALE_PIOGGIA_GIORNO'].max()) if not df_agg_filtered['TOTALE_PIOGGIA_GIORNO'].empty else 100.0
         rain_range = st.sidebar.slider("Pioggia Totale (mm)", 0.0, max_rain, (0.0, max_rain))
@@ -167,36 +169,43 @@ def display_period_analysis(df):
         max_tmed = float(df_agg_filtered['MEDIA_TEMP_MEDIANA'].max()) if df_agg_filtered['MEDIA_TEMP_MEDIANA'].notna().any() else 35.0
         tmed_range = st.sidebar.slider("Temp. Mediana Media (°C)", 0.0, max_tmed, (0.0, max_tmed))
 
+        # Applica i filtri in sequenza
         df_agg_filtered = df_agg_filtered[df_agg_filtered['TOTALE_PIOGGIA_GIORNO'].between(rain_range[0], rain_range[1])]
         if df_agg_filtered['MEDIA_TEMP_MAX'].notna().any(): df_agg_filtered = df_agg_filtered[df_agg_filtered['MEDIA_TEMP_MAX'].between(tmax_range[0], tmax_range[1])]
         if df_agg_filtered['MEDIA_TEMP_MIN'].notna().any(): df_agg_filtered = df_agg_filtered[df_agg_filtered['MEDIA_TEMP_MIN'].between(tmin_range[0], tmin_range[1])]
         if df_agg_filtered['MEDIA_TEMP_MEDIANA'].notna().any(): df_agg_filtered = df_agg_filtered[df_agg_filtered['MEDIA_TEMP_MEDIANA'].between(tmed_range[0], tmed_range[1])]
 
     st.info(f"Visualizzando **{len(df_agg_filtered)}** stazioni che corrispondono ai filtri.")
-    if df_agg_filtered.empty: st.warning("Nessuna stazione corrisponde ai filtri selezionati."); return
-
-    if not df_agg_filtered.empty: map_center = [df_agg_filtered['LATITUDINE'].mean(), df_agg_filtered['LONGITUDINE'].mean()]
-    else: map_center = [43.8, 11.0] # Default sulla Toscana
-    mappa = create_map(map_tile, location=map_center, zoom=8)
-
-    min_rain, max_rain = df_agg_filtered['TOTALE_PIOGGIA_GIORNO'].min(), df_agg_filtered['TOTALE_PIOGGIA_GIORNO'].max()
-    colormap = linear.YlGnBu_09.scale(vmin=min_rain, vmax=max_rain if max_rain > min_rain else min_rain + 1); colormap.caption = 'Totale Piogge (mm) nel Periodo'; mappa.add_child(colormap)
     
-    for _, row in df_agg_filtered.iterrows():
-        fig = go.Figure(go.Bar(x=['Pioggia Totale'], y=[row['TOTALE_PIOGGIA_GIORNO']], marker_color='#007bff', text=[f"{row['TOTALE_PIOGGIA_GIORNO']:.1f} mm"], textposition='auto'))
-        fig.update_layout(title_text=f"<b>{row['STAZIONE']}</b>", title_font_size=14, yaxis_title="mm", width=250, height=200, margin=dict(l=40,r=20,t=40,b=20), showlegend=False)
-        config={'displayModeBar': False}; html_chart = fig.to_html(full_html=False, include_plotlyjs='cdn', config=config)
+    # --- FIX CENTRAGGIO ANTI-SOMALIA ---
+    if not df_agg_filtered.empty:
+        map_center = [df_agg_filtered['LATITUDINE'].mean(), df_agg_filtered['LONGITUDINE'].mean()]
+    else:
+        map_center = [43.8, 11.0] # Default sulla Toscana
+    mappa = create_map(map_tile, location=map_center, zoom=8)
+    
+    if df_agg_filtered.empty: 
+        st.warning("Nessuna stazione corrisponde ai filtri selezionati.")
+    else:
+        min_rain, max_rain = df_agg_filtered['TOTALE_PIOGGIA_GIORNO'].min(), df_agg_filtered['TOTALE_PIOGGIA_GIORNO'].max()
+        colormap = linear.YlGnBu_09.scale(vmin=min_rain, vmax=max_rain if max_rain > min_rain else min_rain + 1); colormap.caption = 'Totale Piogge (mm) nel Periodo'; mappa.add_child(colormap)
         
-        link = f'?station={row["STAZIONE"]}'
-        html_button = f"""<div style='text-align:center; margin-top:10px;'><a href='{link}' target='_self' class='btn' style='background-color:#28a745;color:white;padding:8px 12px;border-radius:5px;text-decoration:none;font-weight:bold;font-family:Arial,sans-serif;font-size:13px;'>📈 Mostra Storico</a></div>"""
-        full_html_popup = f"<div>{html_chart}{html_button}</div>"
-        iframe = folium.IFrame(full_html_popup, width=280, height=260); popup = folium.Popup(iframe, max_width=300)
-        
-        lat, lon = float(row['LONGITUDINE']), float(row['LATITUDINE'])
-        color = colormap(row['TOTALE_PIOGGIA_GIORNO'])
-        tooltip_text = (f"Stazione: {row['STAZIONE']}<br>Pioggia: {row['TOTALE_PIOGGIA_GIORNO']:.1f} mm<br>T.Max: {row.get('MEDIA_TEMP_MAX', 0.0):.1f}°C<br>T.Min: {row.get('MEDIA_TEMP_MIN', 0.0):.1f}°C")
-        folium.CircleMarker(location=[lat, lon], radius=8, color=color, fill=True, fill_color=color, fill_opacity=0.7, popup=popup, tooltip=tooltip_text).add_to(mappa)
-        
+        for _, row in df_agg_filtered.iterrows():
+            fig = go.Figure(go.Bar(x=['Pioggia Totale'], y=[row['TOTALE_PIOGGIA_GIORNO']], marker_color='#007bff', text=[f"{row['TOTALE_PIOGGIA_GIORNO']:.1f} mm"], textposition='auto'))
+            fig.update_layout(title_text=f"<b>{row['STAZIONE']}</b>", title_font_size=14, yaxis_title="mm", width=250, height=200, margin=dict(l=40,r=20,t=40,b=20), showlegend=False)
+            config={'displayModeBar': False}; html_chart = fig.to_html(full_html=False, include_plotlyjs='cdn', config=config)
+            
+            # --- FIX LINK STORICO FUNZIONANTE ---
+            link = f'?station={row["STAZIONE"]}'
+            html_button = f"""<div style='text-align:center; margin-top:10px;'><a href='{link}' target='_self' class='btn' style='background-color:#28a745;color:white;padding:8px 12px;border-radius:5px;text-decoration:none;font-weight:bold;font-family:Arial,sans-serif;font-size:13px;'>📈 Mostra Storico</a></div>"""
+            full_html_popup = f"<div>{html_chart}{html_button}</div>"
+            iframe = folium.IFrame(full_html_popup, width=280, height=260); popup = folium.Popup(iframe, max_width=300)
+            
+            lat, lon = float(row['LONGITUDINE']), float(row['LATITUDINE'])
+            color = colormap(row['TOTALE_PIOGGIA_GIORNO'])
+            tooltip_text = (f"Stazione: {row['STAZIONE']}<br>Pioggia: {row['TOTALE_PIOGGIA_GIORNO']:.1f} mm<br>T.Max: {row.get('MEDIA_TEMP_MAX', 0.0):.1f}°C<br>T.Min: {row.get('MEDIA_TEMP_MIN', 0.0):.1f}°C")
+            folium.CircleMarker(location=[lat, lon], radius=8, color=color, fill=True, fill_color=color, fill_opacity=0.7, popup=popup, tooltip=tooltip_text).add_to(mappa)
+            
     folium_static(mappa, width=1000, height=700)
     with st.expander("Vedi dati aggregati filtrati"): st.dataframe(df_agg_filtered)
 
