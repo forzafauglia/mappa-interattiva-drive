@@ -176,21 +176,12 @@ def display_period_analysis(df):
             fig.update_layout(title_text=f"<b>{row['STAZIONE']}</b>", title_font_size=14, yaxis_title="mm", width=250, height=200, margin=dict(l=40,r=20,t=40,b=20), showlegend=False)
             config={'displayModeBar': False}; html_chart = fig.to_html(full_html=False, include_plotlyjs='cdn', config=config)
             
-            # --- INIZIO NUOVO CODICE ---
-            link = f'?station={row["STAZIONE"]}'
-            js_link = f"window.top.location.href = '{link}'; return false;"
-
-            html_button = f"""
-            <div style='text-align:center; margin-top:10px;'>
-                <a href="#" onclick="{js_link}" class='btn' style='background-color:#28a745;color:white;padding:8px 12px;border-radius:5px;text-decoration:none;font-weight:bold;font-family:Arial,sans-serif;font-size:13px;'>
-                📈 Mostra Storico
-                </a>
-            </div>
-            """
-            # --- FINE NUOVO CODICE ---
+            # --- MODIFICA 1: Il bottone con il link è stato rimosso dal popup ---
+            # Non viene più creato e aggiunto l'html_button
+            full_html_popup = f"<div>{html_chart}</div>"
             
-            full_html_popup = f"<div>{html_chart}{html_button}</div>"
-            iframe = folium.IFrame(full_html_popup, width=280, height=260); 
+            # L'altezza dell'IFrame è stata leggermente ridotta per adattarsi al contenuto senza bottone
+            iframe = folium.IFrame(full_html_popup, width=280, height=220) 
             popup = folium.Popup(iframe, max_width=300, parse_html=True)
             
             lat, lon = float(row['LONGITUDINE']), float(row['LATITUDINE'])
@@ -199,7 +190,40 @@ def display_period_analysis(df):
             folium.CircleMarker(location=[lat, lon], radius=8, color=color, fill=True, fill_color=color, fill_opacity=0.7, popup=popup, tooltip=tooltip_text).add_to(mappa)
             
     folium_static(mappa, width=1000, height=700)
-    with st.expander("Vedi dati aggregati filtrati"): st.dataframe(df_agg_filtered)
+    
+    # --- MODIFICA 2: Link aggiunto nella tabella dei dati aggregati ---
+    with st.expander("Vedi dati aggregati filtrati"):
+        if not df_agg_filtered.empty:
+            # Creiamo una copia del dataframe per non modificare l'originale
+            df_display = df_agg_filtered.copy()
+            
+            # Aggiungiamo una nuova colonna che contiene l'URL per la pagina di dettaglio
+            # Streamlit gestirà questo come un link interno all'app
+            df_display['link_storico'] = df_display['STAZIONE'].apply(lambda name: f"?station={name}")
+            
+            # Usiamo st.data_editor invece di st.dataframe per poter configurare le colonne
+            st.data_editor(
+                df_display,
+                column_config={
+                    # Configuriamo la nuova colonna come un link cliccabile
+                    "link_storico": st.column_config.LinkColumn(
+                        "Link Storico", # Titolo della colonna nella tabella
+                        display_text="📈 Vedi Storico", # Testo che apparirà sul link
+                        help="Clicca per aprire lo storico dettagliato della stazione"
+                    ),
+                    # Possiamo nascondere le colonne che non servono per pulire la visualizzazione
+                    "LATITUDINE": None,
+                    "LONGITUDINE": None
+                },
+                # Nascondiamo la colonna STAZIONE originale se vogliamo che il link sia l'identificativo principale
+                # Oppure la lasciamo per chiarezza. Qui nascondiamo la colonna con l'URL grezzo 'link_storico'
+                # e ne mostriamo una nuova formattata.
+                column_order=("STAZIONE", "link_storico", "TOTALE_PIOGGIA_GIORNO", "MEDIA_TEMP_MAX", "MEDIA_TEMP_MIN", "MEDIA_TEMP_MEDIANA"),
+                hide_index=True,
+                disabled=True # Rende la tabella non modificabile
+            )
+        else:
+            st.write("Nessun dato da visualizzare in base ai filtri selezionati.")
 
 def add_sbalzo_line(fig, df_data, sbalzo_col_name, label):
     if sbalzo_col_name not in df_data.columns: return
@@ -287,6 +311,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
