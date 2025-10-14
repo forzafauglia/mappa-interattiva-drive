@@ -100,6 +100,8 @@ def create_map(tile, location=[43.8, 11.0], zoom=8):
     return folium.Map(location=location, zoom_start=zoom, tiles=tile)
 
 
+# SOSTITUISCI SOLO LA FUNZIONE display_main_map CON QUESTA VERSIONE CORRETTA
+
 def display_main_map(df, last_loaded_ts):
     st.header("🗺️ Mappa Riepilogativa (Situazione Attuale)")
     
@@ -124,20 +126,38 @@ def display_main_map(df, last_loaded_ts):
             st.sidebar.info(f"Sheet aggiornato il: **{df_latest['LEGENDA_ULTIMO_AGGIORNAMENTO_SHEET'].iloc[0]}**")
     except IndexError:
         pass
+        
     st.sidebar.markdown("---"); st.sidebar.subheader("Filtri Dati Standard")
     df_filtrato = df_latest.copy()
+    
+    # Inizia il ciclo dei filtri
     for colonna in COLONNE_FILTRO_RIEPILOGO:
         if colonna in df.columns and pd.to_numeric(df[colonna], errors='coerce').notna().any():
             max_val = float(pd.to_numeric(df[colonna], errors='coerce').max())
-            val_selezionato = st.sidebar.slider(f"Filtra per {slider_label}", min_value=0.0, max_value=max_val if max_val > 0 else 1.0, value=(0.0, max_val))
+            
+            # <<< ECCO LA RIGA MANCANTE, L'HO REINSERITA >>>
+            slider_label = colonna.replace('LEGENDA_', '').replace('_', ' ').title()
+            
+            val_selezionato = st.sidebar.slider(
+                f"Filtra per {slider_label}", 
+                min_value=0.0, 
+                max_value=max_val if max_val > 0 else 1.0, 
+                value=(0.0, max_val)
+            )
             if colonna in df_filtrato.columns:
                 col_numerica = pd.to_numeric(df_filtrato[colonna], errors='coerce').fillna(0)
                 df_filtrato = df_filtrato[col_numerica.between(val_selezionato[0], val_selezionato[1])]
+
     st.sidebar.markdown("---"); st.sidebar.subheader("Filtri Sbalzo Termico")
     for sbalzo_col, suffisso in [("LEGENDA_SBALZO_NUMERICO_MIGLIORE", "Migliore"), ("LEGENDA_SBALZO_NUMERICO_SECONDO", "Secondo")]:
         if sbalzo_col in df.columns and pd.to_numeric(df[sbalzo_col], errors='coerce').notna().any():
             max_val = float(pd.to_numeric(df[sbalzo_col], errors='coerce').max())
-            val_selezionato = st.sidebar.slider(f"Sbalzo Termico {suffisso}", min_value=0.0, max_value=max_val if max_val > 0 else 1.0, value=(0.0, max_val))
+            val_selezionato = st.sidebar.slider(
+                f"Sbalzo Termico {suffisso}", 
+                min_value=0.0, 
+                max_value=max_val if max_val > 0 else 1.0, 
+                value=(0.0, max_val)
+            )
             if sbalzo_col in df_filtrato.columns:
                 col_numerica = pd.to_numeric(df_filtrato[sbalzo_col], errors='coerce').fillna(0)
                 df_filtrato = df_filtrato[col_numerica.between(val_selezionato[0], val_selezionato[1])]
@@ -148,15 +168,11 @@ def display_main_map(df, last_loaded_ts):
     mappa = create_map(map_tile)
     Geocoder(collapsed=True, placeholder='Cerca un luogo...', add_marker=True).add_to(mappa)
 
-    # --- INIZIO OTTIMIZZAZIONE ---
-    
-    # 1. Creiamo un oggetto MarkerCluster a cui aggiungere i punti
+    # --- Inizio Ottimizzazione con MarkerCluster ---
     marker_cluster = MarkerCluster().add_to(mappa)
-
-    # 2. Definiamo le funzioni di utility FUORI dal ciclo per efficienza
+    
     def create_popup_html(row):
-        # ... (la funzione create_popup_html rimane identica a prima) ...
-        html = """<style>...</style><div class="popup-container">"""
+        html = """<style>...</style><div class="popup-container">""" # Il contenuto dell'HTML rimane lo stesso
         groups = {"Info Stazione": ["STAZIONE", "LEGENDA_DESCRIZIONE", "LEGENDA_COMUNE", "LEGENDA_ALTITUDINE"], "Dati Meteo": ["LEGENDA_TEMPERATURA_MEDIANA_MINIMA", "LEGENDA_TEMPERATURA_MEDIANA", "LEGENDA_UMIDITA_MEDIA_7GG", "LEGENDA_PIOGGE_RESIDUA", "LEGENDA_TOTALE_PIOGGE_MENSILI"], "Analisi Base": ["LEGENDA_MEDIA_PORCINI_CALDO_BASE", "LEGENDA_MEDIA_PORCINI_CALDO_BOOST", "LEGENDA_DURATA_RANGE_CALDO", "LEGENDA_CONTEGGIO_GG_ALLA_RACCOLTA_CALDO", "LEGENDA_MEDIA_PORCINI_FREDDO_BASE", "LEGENDA_MEDIA_PORCINI_FREDDO_BOOST", "LEGENDA_DURATA_RANGE_FREDDO", "LEGENDA_CONTEGGIO_GG_ALLA_RACCOLTA_FREDDO"], "Analisi Sbalzo Migliore": ["LEGENDA_SBALZO_TERMICO_MIGLIORE", "LEGENDA_MEDIA_PORCINI_CALDO_ST_MIGLIORE", "LEGENDA_MEDIA_BOOST_CALDO_ST_MIGLIORE", "LEGENDA_GG_ST_MIGLIORE_CALDO", "LEGENDA_MEDIA_PORCINI_FREDDO_ST_MIGLIORE", "LEGENDA_MEDIA_BOOST_FREDDO_ST_MIGLIORE", "LEGENDA_GG_ST_MIGLIORE_FREDDO"], "Analisi Sbalzo Secondo": ["LEGENDA_SBALZO_TERMICO_SECONDO", "LEGENDA_MEDIA_PORCINI_CALDO_ST_SECONDO", "LEGENDA_MEDIA_BOOST_CALDO_ST_SECONDO", "LEGENDA_GG_ST_SECONDO_CALDO", "LEGENDA_MEDIA_PORCINI_FREDDO_ST_SECONDO", "LEGENDA_MEDIA_BOOST_FREDDO_ST_SECONDO", "LEGENDA_GG_ST_SECONDO_FREDDO"]}
         for title, columns in groups.items():
             table_html = "<table>"; has_content = False
@@ -169,17 +185,15 @@ def display_main_map(df, last_loaded_ts):
             if has_content: html += f"<h4>{title}</h4>{table_html}"
         link = f'?station={row["STAZIONE"]}'; html += f"<div class='btn-container'><a href='{link}' target='_self' class='btn'>📈 Mostra Storico Stazione</a></div></div>"
         return html
-    
+
     def get_marker_color(val): 
         return {"ROSSO": "red", "GIALLO": "yellow", "ARANCIONE": "orange", "VERDE": "green"}.get(str(val).strip().upper(), "gray")
     
-    # 3. Cicliamo sui dati e aggiungiamo i marker al CLUSTER, non direttamente alla mappa
     for _, row in df_mappa.iterrows():
         try:
-            lat, lon = float(row['LATITUDINE']), float(row['LONGITUDINE']) # Corretto LATITUDINE e LONGITUDINE
+            lat, lon = float(row['LATITUDINE']), float(row['LONGITUDINE'])
             colore = get_marker_color(row.get('LEGENDA_COLORE', 'gray'))
             
-            # Creiamo il popup ma lo passiamo come IFrame per performance migliori
             popup_html = create_popup_html(row)
             iframe = folium.IFrame(popup_html, width=400, height=300)
             popup = folium.Popup(iframe, max_width=400)
@@ -193,15 +207,13 @@ def display_main_map(df, last_loaded_ts):
                 fill_opacity=0.9,
                 popup=popup,
                 tooltip=f"Stazione: {row['STAZIONE']}"
-            ).add_to(marker_cluster) # Aggiungiamo al cluster!
+            ).add_to(marker_cluster)
 
         except (ValueError, TypeError):
-            # Questo blocco previene errori se lat/lon non sono numeri validi
             continue
-    
-    # --- FINE OTTIMIZZAZIONE ---
         
     folium_static(mappa, width=1000, height=700)
+
 
     
 
@@ -422,6 +434,7 @@ def main():
 # Dice al programma di iniziare eseguendo la funzione main()
 if __name__ == "__main__":
     main()
+
 
 
 
