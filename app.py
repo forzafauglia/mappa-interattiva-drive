@@ -59,19 +59,20 @@ def load_and_prepare_data(url: str):
         for col in df.columns:
             col_clean = col.strip().upper()
 
-            if col_clean == 'DATA':
+        if col_clean == 'DATA':
                 # Primo tentativo: formato anno-mese-giorno (es. 2025-10-14)
                 df[col] = pd.to_datetime(df[col], errors='coerce', format='%Y-%m-%d')
 
                 # Se tutte le date risultano NaT, prova giorno/mese/anno (es. 14/10/2025)
-            if df[col].isna().all():
-            d    f[col] = pd.to_datetime(df[col], errors='coerce', dayfirst=True)
+        if df[col].isna().all():
+            df[col] = pd.to_datetime(df[col], errors='coerce', dayfirst=True)
 
-            elif col_clean not in TEXT_COLUMNS:
-                df[col] = pd.to_numeric(
-                df[col].astype(str).str.replace(',', '.', regex=False),
-                errors='coerce'
+        elif col_clean not in TEXT_COLUMNS:
+            df[col] = pd.to_numeric(
+            df[col].astype(str).str.replace(',', '.', regex=False),
+            errors='coerce'
         )
+
 
         
         temp_cols_to_fill = ['TEMP_MIN', 'TEMP_MAX', 'TEMPERATURA_MEDIANA', 'TEMPERATURA_MEDIANA_MINIMA']
@@ -325,6 +326,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
