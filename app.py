@@ -10,7 +10,6 @@ import re
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from branca.colormap import linear
-from folium.plugins import Geocoder, MarkerCluster # Aggiungi MarkerCluster qui
 
 # --- 2. CONFIGURAZIONE CENTRALE E FUNZIONI DI BASE ---
 SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRxitMYpUqvX6bxVaukG01lJDC8SUfXtr47Zv5ekR1IzfR1jmhUilBsxZPJ8hrktVHrBh6hUUWYUtox/pub?output=csv"
@@ -35,78 +34,49 @@ def check_password():
 @st.cache_resource
 def get_view_counter(): return {"count": 0}
 
-
-# Sostituisci la tua funzione load_and_prepare_data con questa
+# --- FUNZIONE DI CARICAMENTO DATI CORRETTA E ROBUSTA ---
 @st.cache_data(ttl=3600)
 def load_and_prepare_data(url: str):
     load_timestamp = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
     try:
         df = pd.read_csv(url, na_values=["#N/D", "#N/A"], dtype=str, header=0, skiprows=[1])
-        if isinstance(df.columns, pd.MultiIndex): df.columns = ['_'.join(map(str, col)).strip() for col in df.columns.values]
         
+        # Pulizia nomi colonne
         cleaned_cols = {}
         for col in df.columns:
             temp_name = str(col).replace('[', '').replace(']', '').replace('(', '').replace(')', '').replace("'", "")
             cleaned_name = temp_name.strip().replace(' ', '_').upper()
             cleaned_cols[col] = cleaned_name
         df.rename(columns=cleaned_cols, inplace=True)
-
         df = df.loc[:, ~df.columns.duplicated()]
+
+        # Gestione sbalzo termico
         for sbalzo_col, suffisso in [("LEGENDA_SBALZO_TERMICO_MIGLIORE", "MIGLIORE"), ("LEGENDA_SBALZO_TERMICO_SECONDO", "SECONDO")]:
             if sbalzo_col in df.columns:
                 split_cols = df[sbalzo_col].str.split(' - ', n=1, expand=True)
                 if split_cols.shape[1] == 2: df[f"LEGENDA_SBALZO_NUMERICO_{suffisso}"] = pd.to_numeric(split_cols[0].str.replace(',', '.'), errors='coerce')
         
-        TEXT_COLUMNS = [
-            'STAZIONE', 'LEGENDA_DESCRIZIONE', 'LEGENDA_COMUNE', 'LEGENDA_COLORE',
-            'LEGENDA_ULTIMO_AGGIORNAMENTO_SHEET', 'LEGENDA_SBALZO_TERMICO_MIGLIORE',
-            'LEGENDA_SBALZO_TERMICO_SECONDO', 'PORCINI_CALDO_NOTE', 'PORCINI_FREDDO_NOTE', 'SBALZO_TERMICO_MIGLIORE', 
-            '2°_SBALZO_TERMICO_MIGLIORE', 'LEGENDA'
-        ]
+        TEXT_COLUMNS = ['STAZIONE', 'LEGENDA_DESCRIZIONE', 'LEGENDA_COMUNE', 'LEGENDA_COLORE', 'LEGENDA_ULTIMO_AGGIORNAMENTO_SHEET', 'LEGENDA_SBALZO_TERMICO_MIGLIORE', 'LEGENDA_SBALZO_TERMICO_SECONDO', 'PORCINI_CALDO_NOTE', 'PORCINI_FREDDO_NOTE', 'SBALZO_TERMICO_MIGLIORE', '2°_SBALZO_TERMICO_MIGLIORE', 'LEGENDA']
 
+        # Conversione tipi di dato
         for col in df.columns:
-            col_clean = col.strip().upper()
-
-            # <<< MODIFICA 1: Parsing della data reso più robusto e semplice
-            if col_clean == 'DATA':
-                # Lasciamo che pandas inferisca il formato, privilegiando il formato europeo (giorno/mese/anno).
-                # 'errors=coerce' trasforma qualsiasi valore non convertibile in NaT (Not a Time).
+            if col.strip().upper() == 'DATA':
                 df[col] = pd.to_datetime(df[col], dayfirst=True, errors='coerce')
-
-            elif col_clean not in TEXT_COLUMNS:
-                df[col] = pd.to_numeric(
-                    df[col].astype(str).str.replace(',', '.', regex=False),
-                    errors='coerce'
-                )
-        
-        temp_cols_to_fill = ['TEMP_MIN', 'TEMP_MAX', 'TEMPERATURA_MEDIANA', 'TEMPERATURA_MEDIANA_MINIMA']
-        df_source_temps = df[df['STAZIONE'].str.startswith('TOS', na=False)][['STAZIONE', 'DATA'] + temp_cols_to_fill].copy()
-        df_merged = pd.merge(df, df_source_temps, left_on=['LEGENDA', 'DATA'], right_on=['STAZIONE', 'DATA'], how='left', suffixes=('', '_sorgente'))
-        for col in temp_cols_to_fill:
-            if f'{col}_sorgente' in df_merged.columns: df_merged[col] = df_merged[col].fillna(df_merged[f'{col}_sorgente'])
-        source_cols_to_drop = ['STAZIONE_sorgente'] + [f'{col}_sorgente' for col in temp_cols_to_fill if f'{col}_sorgente' in df_merged.columns]
-        df = df_merged.drop(columns=source_cols_to_drop)
-        
-        # <<< MODIFICA 2: Rimuoviamo la riga che eliminava i dati in modo troppo aggressivo.
-        # La gestione dei valori mancanti verrà fatta dove serve, non globalmente.
-        # df.dropna(subset=['LONGITUDINE', 'LATITUDINE', 'DATA'], inplace=True, how='any') # RIGA RIMOSSA
+            elif col.strip().upper() not in TEXT_COLUMNS:
+                df[col] = pd.to_numeric(df[col].astype(str).str.replace(',', '.', regex=False), errors='coerce')
         
         return df, load_timestamp
     except Exception as e:
         st.error(f"Errore critico durante il caricamento dei dati: {e}"); return None, None
 
-
 def create_map(tile, location=[43.8, 11.0], zoom=8):
     return folium.Map(location=location, zoom_start=zoom, tiles=tile)
 
-
-# SOSTITUISCI SOLO LA FUNZIONE display_main_map CON QUESTA VERSIONE CORRETTA
-
+# --- MAPPA RIEPILOGATIVA CORRETTA E CON POPUP OTTIMIZZATI ---
 def display_main_map(df, last_loaded_ts):
     st.header("🗺️ Mappa Riepilogativa (Situazione Attuale)")
     
     df_with_valid_dates = df.dropna(subset=['DATA'])
-    
     if df_with_valid_dates.empty:
         st.error("ERRORE: Non sono state trovate righe con date valide nel file.")
         return
@@ -115,7 +85,7 @@ def display_main_map(df, last_loaded_ts):
     df_latest = df_with_valid_dates[df_with_valid_dates['DATA'] == last_date].copy()
     st.info(f"Visualizzazione dati aggiornati al: **{last_date.strftime('%d/%m/%Y')}**")
 
-    # --- Parte della Sidebar (invariata) ---
+    # --- Sidebar e Filtri con logica corretta ---
     st.sidebar.title("Informazioni e Filtri Riepilogo"); st.sidebar.markdown("---")
     map_tile = st.sidebar.selectbox("Tipo di mappa:", ["OpenStreetMap", "CartoDB positron"], key="tile_main")
     st.sidebar.markdown("---"); st.sidebar.subheader("Statistiche")
@@ -126,24 +96,15 @@ def display_main_map(df, last_loaded_ts):
             st.sidebar.info(f"Sheet aggiornato il: **{df_latest['LEGENDA_ULTIMO_AGGIORNAMENTO_SHEET'].iloc[0]}**")
     except IndexError:
         pass
-        
+
     st.sidebar.markdown("---"); st.sidebar.subheader("Filtri Dati Standard")
     df_filtrato = df_latest.copy()
-    
-    # Inizia il ciclo dei filtri
+
     for colonna in COLONNE_FILTRO_RIEPILOGO:
         if colonna in df.columns and pd.to_numeric(df[colonna], errors='coerce').notna().any():
             max_val = float(pd.to_numeric(df[colonna], errors='coerce').max())
-            
-            # <<< ECCO LA RIGA MANCANTE, L'HO REINSERITA >>>
             slider_label = colonna.replace('LEGENDA_', '').replace('_', ' ').title()
-            
-            val_selezionato = st.sidebar.slider(
-                f"Filtra per {slider_label}", 
-                min_value=0.0, 
-                max_value=max_val if max_val > 0 else 1.0, 
-                value=(0.0, max_val)
-            )
+            val_selezionato = st.sidebar.slider(f"Filtra per {slider_label}", min_value=0.0, max_value=max_val if max_val > 0 else 1.0, value=(0.0, max_val))
             if colonna in df_filtrato.columns:
                 col_numerica = pd.to_numeric(df_filtrato[colonna], errors='coerce').fillna(0)
                 df_filtrato = df_filtrato[col_numerica.between(val_selezionato[0], val_selezionato[1])]
@@ -152,12 +113,7 @@ def display_main_map(df, last_loaded_ts):
     for sbalzo_col, suffisso in [("LEGENDA_SBALZO_NUMERICO_MIGLIORE", "Migliore"), ("LEGENDA_SBALZO_NUMERICO_SECONDO", "Secondo")]:
         if sbalzo_col in df.columns and pd.to_numeric(df[sbalzo_col], errors='coerce').notna().any():
             max_val = float(pd.to_numeric(df[sbalzo_col], errors='coerce').max())
-            val_selezionato = st.sidebar.slider(
-                f"Sbalzo Termico {suffisso}", 
-                min_value=0.0, 
-                max_value=max_val if max_val > 0 else 1.0, 
-                value=(0.0, max_val)
-            )
+            val_selezionato = st.sidebar.slider(f"Sbalzo Termico {suffisso}", min_value=0.0, max_value=max_val if max_val > 0 else 1.0, value=(0.0, max_val))
             if sbalzo_col in df_filtrato.columns:
                 col_numerica = pd.to_numeric(df_filtrato[sbalzo_col], errors='coerce').fillna(0)
                 df_filtrato = df_filtrato[col_numerica.between(val_selezionato[0], val_selezionato[1])]
@@ -168,11 +124,8 @@ def display_main_map(df, last_loaded_ts):
     mappa = create_map(map_tile)
     Geocoder(collapsed=True, placeholder='Cerca un luogo...', add_marker=True).add_to(mappa)
 
-    # --- Inizio Ottimizzazione con MarkerCluster ---
-    marker_cluster = MarkerCluster().add_to(mappa)
-    
     def create_popup_html(row):
-        html = """<style>...</style><div class="popup-container">""" # Il contenuto dell'HTML rimane lo stesso
+        html = """<style>.popup-container{font-family:Arial,sans-serif;font-size:13px;max-height:350px;overflow-y:auto;overflow-x:hidden}h4{margin-top:12px;margin-bottom:5px;color:#0057e7;border-bottom:1px solid #ccc;padding-bottom:3px}table{width:100%;border-collapse:collapse;margin-bottom:10px}td{text-align:left;padding:4px;border-bottom:1px solid #eee}td:first-child{font-weight:bold;color:#333;width:65%}td:last-child{color:#555}.btn-container{text-align:center;margin-top:15px;}.btn{background-color:#007bff;color:white;padding:8px 12px;border-radius:5px;text-decoration:none;font-weight:bold;}</style><div class="popup-container">"""
         groups = {"Info Stazione": ["STAZIONE", "LEGENDA_DESCRIZIONE", "LEGENDA_COMUNE", "LEGENDA_ALTITUDINE"], "Dati Meteo": ["LEGENDA_TEMPERATURA_MEDIANA_MINIMA", "LEGENDA_TEMPERATURA_MEDIANA", "LEGENDA_UMIDITA_MEDIA_7GG", "LEGENDA_PIOGGE_RESIDUA", "LEGENDA_TOTALE_PIOGGE_MENSILI"], "Analisi Base": ["LEGENDA_MEDIA_PORCINI_CALDO_BASE", "LEGENDA_MEDIA_PORCINI_CALDO_BOOST", "LEGENDA_DURATA_RANGE_CALDO", "LEGENDA_CONTEGGIO_GG_ALLA_RACCOLTA_CALDO", "LEGENDA_MEDIA_PORCINI_FREDDO_BASE", "LEGENDA_MEDIA_PORCINI_FREDDO_BOOST", "LEGENDA_DURATA_RANGE_FREDDO", "LEGENDA_CONTEGGIO_GG_ALLA_RACCOLTA_FREDDO"], "Analisi Sbalzo Migliore": ["LEGENDA_SBALZO_TERMICO_MIGLIORE", "LEGENDA_MEDIA_PORCINI_CALDO_ST_MIGLIORE", "LEGENDA_MEDIA_BOOST_CALDO_ST_MIGLIORE", "LEGENDA_GG_ST_MIGLIORE_CALDO", "LEGENDA_MEDIA_PORCINI_FREDDO_ST_MIGLIORE", "LEGENDA_MEDIA_BOOST_FREDDO_ST_MIGLIORE", "LEGENDA_GG_ST_MIGLIORE_FREDDO"], "Analisi Sbalzo Secondo": ["LEGENDA_SBALZO_TERMICO_SECONDO", "LEGENDA_MEDIA_PORCINI_CALDO_ST_SECONDO", "LEGENDA_MEDIA_BOOST_CALDO_ST_SECONDO", "LEGENDA_GG_ST_SECONDO_CALDO", "LEGENDA_MEDIA_PORCINI_FREDDO_ST_SECONDO", "LEGENDA_MEDIA_BOOST_FREDDO_ST_SECONDO", "LEGENDA_GG_ST_SECONDO_FREDDO"]}
         for title, columns in groups.items():
             table_html = "<table>"; has_content = False
@@ -189,15 +142,18 @@ def display_main_map(df, last_loaded_ts):
     def get_marker_color(val): 
         return {"ROSSO": "red", "GIALLO": "yellow", "ARANCIONE": "orange", "VERDE": "green"}.get(str(val).strip().upper(), "gray")
     
+    # --- CICLO DI DISEGNO ORIGINALE CON POPUP OTTIMIZZATI ---
     for _, row in df_mappa.iterrows():
         try:
+            # Uso row['LONGITUDINE'] e row['LATITUDINE'] come nel tuo originale, perché hai detto che funziona.
             lat, lon = float(row['LATITUDINE']), float(row['LONGITUDINE'])
             colore = get_marker_color(row.get('LEGENDA_COLORE', 'gray'))
             
+            # OTTIMIZZAZIONE: Usiamo un IFrame per il popup. È molto più leggero per il browser.
             popup_html = create_popup_html(row)
             iframe = folium.IFrame(popup_html, width=400, height=300)
             popup = folium.Popup(iframe, max_width=400)
-
+            
             folium.CircleMarker(
                 location=[lat, lon],
                 radius=6,
@@ -206,34 +162,28 @@ def display_main_map(df, last_loaded_ts):
                 fill_color=colore,
                 fill_opacity=0.9,
                 popup=popup,
-                tooltip=f"Stazione: {row['STAZIONE']}"
-            ).add_to(marker_cluster)
-
+                tooltip=f"Stazione: {row['STAZIONE']}" # Aggiunto un tooltip semplice per velocità
+            ).add_to(mappa)
         except (ValueError, TypeError):
             continue
         
     folium_static(mappa, width=1000, height=700)
 
+# --- Tutte le altre funzioni (display_period_analysis, etc.) rimangono invariate ---
+# ... (incolla qui il resto del tuo codice da display_period_analysis in poi, è già corretto) ...
 
-    
-
-# SOSTITUISCI LA TUA VECCHIA FUNZIONE CON QUESTA
 def display_period_analysis(df):
     st.header("📊 Analisi di Periodo con Dati Aggregati")
     st.sidebar.title("Filtri di Periodo")
     map_tile = st.sidebar.selectbox("Tipo di mappa:", ["OpenStreetMap", "CartoDB positron"], key="tile_period")
 
-    # <<< CORREZIONE: Aggiunto un controllo di sicurezza prima di usare le date
-    # Filtriamo il dataframe per avere solo le righe con date valide
     df_with_dates = df.dropna(subset=['DATA'])
 
-    # Se non ci sono righe con date valide, mostriamo un errore e ci fermiamo
     if df_with_dates.empty:
         st.error("ERRORE: Non sono state trovate date valide nel file. Impossibile eseguire l'analisi di periodo.")
         st.warning("Controlla la colonna 'DATA' nel tuo Google Sheet.")
-        return # Interrompe l'esecuzione di questa funzione
+        return
 
-    # Solo se ci sono date valide, procediamo a trovare min e max
     min_date, max_date = df_with_dates['DATA'].min().date(), df_with_dates['DATA'].max().date()
     
     date_range = st.sidebar.date_input("Seleziona un periodo:", value=(max_date, max_date), min_value=min_date, max_value=max_date)
@@ -242,7 +192,6 @@ def display_period_analysis(df):
         st.stop()
     
     start_date, end_date = date_range
-    # Usiamo df_with_dates anche qui per essere sicuri
     df_filtered = df_with_dates[df_with_dates['DATA'].dt.date.between(start_date, end_date)]
     
     agg_cols = {'TOTALE_PIOGGIA_GIORNO': 'sum', 'LATITUDINE': 'first', 'LONGITUDINE': 'first', 'TEMP_MAX': 'mean', 'TEMP_MIN': 'mean', 'TEMPERATURA_MEDIANA': 'mean'}
@@ -268,7 +217,7 @@ def display_period_analysis(df):
 
     st.info(f"Visualizzando **{len(df_agg_filtered)}** stazioni che corrispondono ai filtri.")
     
-    if not df_agg_filtered.empty: map_center = [df_agg_filtered['LONGITUDINE'].mean(), df_agg_filtered['LATITUDINE'].mean()]
+    if not df_agg_filtered.empty: map_center = [df_agg_filtered['LATITUDINE'].mean(), df_agg_filtered['LONGITUDINE'].mean()]
     else: map_center = [43.8, 11.0]
     mappa = create_map(map_tile, location=map_center, zoom=8)
     
@@ -287,7 +236,7 @@ def display_period_analysis(df):
             iframe = folium.IFrame(full_html_popup, width=280, height=220) 
             popup = folium.Popup(iframe, max_width=300, parse_html=True)
             
-            lat, lon = float(row['LONGITUDINE']), float(row['LATITUDINE'])
+            lat, lon = float(row['LATITUDINE']), float(row['LONGITUDINE'])
             color = colormap(row['TOTALE_PIOGGIA_GIORNO'])
             tooltip_text = (f"Stazione: {row['STAZIONE']}<br>Pioggia: {row['TOTALE_PIOGGIA_GIORNO']:.1f} mm<br>T.Max: {row.get('MEDIA_TEMP_MAX', 0.0):.1f}°C<br>T.Min: {row.get('MEDIA_TEMP_MIN', 0.0):.1f}°C")
             folium.CircleMarker(location=[lat, lon], radius=8, color=color, fill=True, fill_color=color, fill_opacity=0.7, popup=popup, tooltip=tooltip_text).add_to(mappa)
@@ -298,17 +247,7 @@ def display_period_analysis(df):
         if not df_agg_filtered.empty:
             df_display = df_agg_filtered.copy()
             df_display['link_storico'] = df_display['STAZIONE'].apply(lambda name: f"?station={name}")
-            st.data_editor(
-                df_display,
-                column_config={
-                    "link_storico": st.column_config.LinkColumn("Link Storico", display_text="📈 Vedi Storico", help="Clicca per aprire lo storico dettagliato della stazione"),
-                    "LATITUDINE": None,
-                    "LONGITUDINE": None
-                },
-                column_order=("STAZIONE", "link_storico", "TOTALE_PIOGGIA_GIORNO", "MEDIA_TEMP_MAX", "MEDIA_TEMP_MIN", "MEDIA_TEMP_MEDIANA"),
-                hide_index=True,
-                disabled=True
-            )
+            st.data_editor(df_display, column_config={"link_storico": st.column_config.LinkColumn("Link Storico", display_text="📈 Vedi Storico", help="Clicca per aprire lo storico dettagliato della stazione"),"LATITUDINE": None,"LONGITUDINE": None}, column_order=("STAZIONE", "link_storico", "TOTALE_PIOGGIA_GIORNO", "MEDIA_TEMP_MAX", "MEDIA_TEMP_MIN", "MEDIA_TEMP_MEDIANA"), hide_index=True, disabled=True)
         else:
             st.write("Nessun dato da visualizzare in base ai filtri selezionati.")
 
@@ -352,8 +291,8 @@ def display_station_detail(df, station_name):
             fig2.add_trace(go.Scatter(x=df_chart['DATA'], y=df_chart['TEMPERATURA_MEDIANA'], name='Temperatura Mediana', mode='lines', line=dict(color='red')), secondary_y=True)
             max_y_rain_res = df_chart['PIOGGE_RESIDUA_ZOFFOLI'].max() * 1.1; min_y_rain_res = df_chart['PIOGGE_RESIDUA_ZOFFOLI'].min() * 0.9
             max_y_temp_med = df_chart['TEMPERATURA_MEDIANA'].max() * 1.1; min_y_temp_med = df_chart['TEMPERATURA_MEDIANA'].min() * 0.9
-            fig2.update_yaxes(title_text="<b>Piogge Residua</b>", range=[min_y_rain_res, max_y_rain_res], secondary_y=False, fixedrange=True)
-            fig2.update_yaxes(title_text="<b>Temperatura Mediana (°C)</b>", range=[min_y_temp_med, max_y_temp_med], secondary_y=True, fixedrange=True)
+            fig2.update_yaxes(title_text="<b>Piogge Residua</b>", range=[min_y_rain_res, max_y_rain_res], secondary_y=False)
+            fig2.update_yaxes(title_text="<b>Temperatura Mediana (°C)</b>", range=[min_y_temp_med, max_y_temp_med], secondary_y=True)
             fig2.update_layout(title_text="Temp vs Piogge", xaxis_range=[start_date_default, end_date_default])
             add_sbalzo_line(fig2, df_station, 'SBALZO_TERMICO_MIGLIORE', 'Sbalzo Migliore'); add_sbalzo_line(fig2, df_station, '2°_SBALZO_TERMICO_MIGLIORE', '2° Sbalzo')
             st.plotly_chart(fig2, use_container_width=True, config=config_chart)
@@ -377,23 +316,17 @@ def display_station_detail(df, station_name):
             st.dataframe(df_station[sel_cols].sort_values('DATA', ascending=False))
         else: st.info("Seleziona almeno una colonna.")
 
-
-# CANCELLA LA TUA VECCHIA FUNZIONE 'main' E INCOLLA QUESTA
 def main():
     st.set_page_config(page_title="Mappa Funghi Protetta", layout="wide")
     st.title("💧 Analisi Meteo Funghi – by Bobo 🍄")
     query_params = st.query_params
 
-    # Carichiamo i dati
     df, last_loaded_ts = load_and_prepare_data(SHEET_URL)
     
-    # Controllo di sicurezza fondamentale
     if df is None or df.empty: 
         st.error("Caricamento dati fallito o il file è vuoto. Controlla il Google Sheet.")
         st.stop()
     
-    # --- BLOCCO DI DEBUG ---
-    # Questo blocco ci aiuterà a capire il problema delle date una volta che la pagina sarà tornata visibile
     with st.expander("🔍 Informazioni di Debug (clicca per aprire)"):
         df_valid_dates = df.dropna(subset=['DATA'])
         if not df_valid_dates.empty:
@@ -401,58 +334,25 @@ def main():
             max_date_found = df_valid_dates['DATA'].max().strftime('%d/%m/%Y')
             st.info(f"Data MINIMA trovata nel file: **{min_date_found}**")
             st.error(f"Data MASSIMA trovata nel file: **{max_date_found}**")
-            st.write("La mappa riepilogativa usa la data MASSIMA. Se è sbagliata, cercala nel Google Sheet e correggila.")
+            st.write("La mappa riepilogativa usa la data MASSIMA.")
         else:
-            st.warning("ATTENZIONE: Nessuna data valida è stata trovata nel file. Controlla la colonna 'DATA' nel Google Sheet.")
-    # --- FINE BLOCCO DI DEBUG ---
+            st.warning("ATTENZIONE: Nessuna data valida è stata trovata nel file.")
 
-    # Logica per decidere cosa mostrare
     if "station" in query_params:
         display_station_detail(df, query_params["station"])
     else:
-        # Codice per il login e la scelta della modalità
         if check_password():
             counter = get_view_counter()
             if st.session_state.get('just_logged_in', False): 
                 counter["count"] += 1
                 st.session_state['just_logged_in'] = False
             
-            mode = st.radio(
-                "Seleziona la modalità:", 
-                ["Mappa Riepilogativa", "Analisi di Periodo"], 
-                horizontal=True
-            )
+            mode = st.radio("Seleziona la modalità:", ["Mappa Riepilogativa", "Analisi di Periodo"], horizontal=True)
 
             if mode == "Mappa Riepilogativa": 
                 display_main_map(df, last_loaded_ts)
             elif mode == "Analisi di Periodo": 
-                # Assicurati di aver sostituito anche la funzione display_period_analysis
-                # con la versione corretta che ti ho dato prima.
                 display_period_analysis(df)
 
-# <<< QUESTA RIGA E' FONDAMENTALE E PROBABILMENTE MANCAVA >>>
-# Dice al programma di iniziare eseguendo la funzione main()
 if __name__ == "__main__":
     main()
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
