@@ -168,14 +168,33 @@ def display_main_map(df, last_loaded_ts):
     folium_static(mappa, width=1000, height=700)
 
 
+# SOSTITUISCI LA TUA VECCHIA FUNZIONE CON QUESTA
 def display_period_analysis(df):
     st.header("📊 Analisi di Periodo con Dati Aggregati")
     st.sidebar.title("Filtri di Periodo")
     map_tile = st.sidebar.selectbox("Tipo di mappa:", ["OpenStreetMap", "CartoDB positron"], key="tile_period")
-    min_date, max_date = df['DATA'].min().date(), df['DATA'].max().date()
+
+    # <<< CORREZIONE: Aggiunto un controllo di sicurezza prima di usare le date
+    # Filtriamo il dataframe per avere solo le righe con date valide
+    df_with_dates = df.dropna(subset=['DATA'])
+
+    # Se non ci sono righe con date valide, mostriamo un errore e ci fermiamo
+    if df_with_dates.empty:
+        st.error("ERRORE: Non sono state trovate date valide nel file. Impossibile eseguire l'analisi di periodo.")
+        st.warning("Controlla la colonna 'DATA' nel tuo Google Sheet.")
+        return # Interrompe l'esecuzione di questa funzione
+
+    # Solo se ci sono date valide, procediamo a trovare min e max
+    min_date, max_date = df_with_dates['DATA'].min().date(), df_with_dates['DATA'].max().date()
+    
     date_range = st.sidebar.date_input("Seleziona un periodo:", value=(max_date, max_date), min_value=min_date, max_value=max_date)
-    if len(date_range) != 2: st.warning("Seleziona un intervallo di date valido."); st.stop()
-    start_date, end_date = date_range; df_filtered = df[df['DATA'].dt.date.between(start_date, end_date)]
+    if len(date_range) != 2: 
+        st.warning("Seleziona un intervallo di date valido.")
+        st.stop()
+    
+    start_date, end_date = date_range
+    # Usiamo df_with_dates anche qui per essere sicuri
+    df_filtered = df_with_dates[df_with_dates['DATA'].dt.date.between(start_date, end_date)]
     
     agg_cols = {'TOTALE_PIOGGIA_GIORNO': 'sum', 'LATITUDINE': 'first', 'LONGITUDINE': 'first', 'TEMP_MAX': 'mean', 'TEMP_MIN': 'mean', 'TEMPERATURA_MEDIANA': 'mean'}
     df_agg = df_filtered.groupby('STAZIONE').agg(agg_cols).reset_index().dropna(subset=['LATITUDINE', 'LONGITUDINE'])
@@ -215,11 +234,7 @@ def display_period_analysis(df):
             fig.update_layout(title_text=f"<b>{row['STAZIONE']}</b>", title_font_size=14, yaxis_title="mm", width=250, height=200, margin=dict(l=40,r=20,t=40,b=20), showlegend=False)
             config={'displayModeBar': False}; html_chart = fig.to_html(full_html=False, include_plotlyjs='cdn', config=config)
             
-            # --- MODIFICA 1: Il bottone con il link è stato rimosso dal popup ---
-            # Non viene più creato e aggiunto l'html_button
             full_html_popup = f"<div>{html_chart}</div>"
-            
-            # L'altezza dell'IFrame è stata leggermente ridotta per adattarsi al contenuto senza bottone
             iframe = folium.IFrame(full_html_popup, width=280, height=220) 
             popup = folium.Popup(iframe, max_width=300, parse_html=True)
             
@@ -230,36 +245,20 @@ def display_period_analysis(df):
             
     folium_static(mappa, width=1000, height=700)
     
-    # --- MODIFICA 2: Link aggiunto nella tabella dei dati aggregati ---
     with st.expander("Vedi dati aggregati filtrati"):
         if not df_agg_filtered.empty:
-            # Creiamo una copia del dataframe per non modificare l'originale
             df_display = df_agg_filtered.copy()
-            
-            # Aggiungiamo una nuova colonna che contiene l'URL per la pagina di dettaglio
-            # Streamlit gestirà questo come un link interno all'app
             df_display['link_storico'] = df_display['STAZIONE'].apply(lambda name: f"?station={name}")
-            
-            # Usiamo st.data_editor invece di st.dataframe per poter configurare le colonne
             st.data_editor(
                 df_display,
                 column_config={
-                    # Configuriamo la nuova colonna come un link cliccabile
-                    "link_storico": st.column_config.LinkColumn(
-                        "Link Storico", # Titolo della colonna nella tabella
-                        display_text="📈 Vedi Storico", # Testo che apparirà sul link
-                        help="Clicca per aprire lo storico dettagliato della stazione"
-                    ),
-                    # Possiamo nascondere le colonne che non servono per pulire la visualizzazione
+                    "link_storico": st.column_config.LinkColumn("Link Storico", display_text="📈 Vedi Storico", help="Clicca per aprire lo storico dettagliato della stazione"),
                     "LATITUDINE": None,
                     "LONGITUDINE": None
                 },
-                # Nascondiamo la colonna STAZIONE originale se vogliamo che il link sia l'identificativo principale
-                # Oppure la lasciamo per chiarezza. Qui nascondiamo la colonna con l'URL grezzo 'link_storico'
-                # e ne mostriamo una nuova formattata.
                 column_order=("STAZIONE", "link_storico", "TOTALE_PIOGGIA_GIORNO", "MEDIA_TEMP_MAX", "MEDIA_TEMP_MIN", "MEDIA_TEMP_MEDIANA"),
                 hide_index=True,
-                disabled=True # Rende la tabella non modificabile
+                disabled=True
             )
         else:
             st.write("Nessun dato da visualizzare in base ai filtri selezionati.")
@@ -370,6 +369,7 @@ def main():
                 display_main_map(df, last_loaded_ts)
             elif mode == "Analisi di Periodo": 
                 display_period_analysis(df)
+
 
 
 
