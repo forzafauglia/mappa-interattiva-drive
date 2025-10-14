@@ -55,28 +55,28 @@ def load_and_prepare_data(url: str):
                 split_cols = df[sbalzo_col].str.split(' - ', n=1, expand=True)
                 if split_cols.shape[1] == 2: df[f"LEGENDA_SBALZO_NUMERICO_{suffisso}"] = pd.to_numeric(split_cols[0].str.replace(',', '.'), errors='coerce')
         
-TEXT_COLUMNS = [
-    'STAZIONE', 'LEGENDA_DESCRIZIONE', 'LEGENDA_COMUNE', 'LEGENDA_COLORE',
-    'LEGENDA_ULTIMO_AGGIORNAMENTO_SHEET', 'LEGENDA_SBALZO_TERMICO_MIGLIORE',
-    'LEGENDA_SBALZO_TERMICO_SECONDO', 'PORCINI_CALDO_NOTE', 'PORCINI_FREDDO_NOTE', 'SBALZO_TERMICO_MIGLIORE', 
-    '2°_SBALZO_TERMICO_MIGLIORE', 'LEGENDA'
-]
+        TEXT_COLUMNS = [
+            'STAZIONE', 'LEGENDA_DESCRIZIONE', 'LEGENDA_COMUNE', 'LEGENDA_COLORE',
+            'LEGENDA_ULTIMO_AGGIORNAMENTO_SHEET', 'LEGENDA_SBALZO_TERMICO_MIGLIORE',
+            'LEGENDA_SBALZO_TERMICO_SECONDO', 'PORCINI_CALDO_NOTE', 'PORCINI_FREDDO_NOTE', 'SBALZO_TERMICO_MIGLIORE', 
+            '2°_SBALZO_TERMICO_MIGLIORE', 'LEGENDA'
+        ]
 
-for col in df.columns:
-    col_clean = col.strip().upper()
+        for col in df.columns:
+            col_clean = col.strip().upper()
 
-    if col_clean == 'DATA':
-        # Prova formato ISO
-        df[col] = pd.to_datetime(df[col], errors='coerce', format='%Y-%m-%d')
-        # Se tutte le date risultano NaT, prova formato europeo
-        if df[col].isna().all():
-            df[col] = pd.to_datetime(df[col], errors='coerce', dayfirst=True)
+            if col_clean == 'DATA':
+                # Prova formato ISO
+                df[col] = pd.to_datetime(df[col], errors='coerce', format='%Y-%m-%d')
+                # Se tutte le date risultano NaT, prova formato europeo
+                if df[col].isna().all():
+                    df[col] = pd.to_datetime(df[col], errors='coerce', dayfirst=True)
 
-    elif col_clean not in TEXT_COLUMNS:
-        df[col] = pd.to_numeric(
-            df[col].astype(str).str.replace(',', '.', regex=False),
-            errors='coerce'
-        )
+            elif col_clean not in TEXT_COLUMNS:
+                df[col] = pd.to_numeric(
+                    df[col].astype(str).str.replace(',', '.', regex=False),
+                    errors='coerce'
+                )
 
 
         
@@ -339,6 +339,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
