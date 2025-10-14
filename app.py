@@ -305,14 +305,44 @@ def display_station_detail(df, station_name):
     fig3.update_layout(title="Escursione Termica Giornaliera", xaxis_title="Data", yaxis_title="°C", xaxis_range=[start_date_default, end_date_default], yaxis_range=[min_y_temp, max_y_temp])
     st.plotly_chart(fig3, use_container_width=True, config=config_chart)
 
-    with st.expander("Visualizza tabella dati storici completi"):
-        all_cols = sorted([c for c in df_station.columns if not c.startswith('LEGENDA_') and c not in ['LATITUDINE', 'LONGITUDINE', 'COORDINATEGOOGLE']])
-        defaults = ['DATA', 'STAZIONE', 'TOTALE_PIOGGIA_GIORNO', 'PIOGGE_RESIDUA_ZOFFOLI', 'TEMP_MIN', 'TEMP_MAX', 'TEMPERATURA_MEDIANA', 'TEMPERATURA_MEDIANA_MINIMA', 'SBALZO_TERMICO_MIGLIORE', '2°_SBALZO_TERMICO_MIGLIORE', 'UMIDITA_DEL_GIORNO', 'UMIDITA_MEDIA_7GG', 'VENTO', 'PORCINI_CALDO_NOTE', 'DURATA_RANGE', 'CONTEGGIO_GG_ALLA_RACCOLTA', 'PORCINI_FREDDO_NOTE', 'BOOST']
-        sel_cols = st.multiselect("Seleziona colonne:", options=all_cols, default=[c for c in defaults if c in all_cols])
-        if sel_cols:
-            st.markdown("""<style>div[data-testid="stDataFrame"] { overflow-x: auto; }</style>""", unsafe_allow_html=True)
-            st.dataframe(df_station[sel_cols].sort_values('DATA', ascending=False))
-        else: st.info("Seleziona almeno una colonna.")
+# All'interno della funzione display_station_detail:
+
+with st.expander("Visualizza tabella dati storici completi"):
+    all_cols = sorted([c for c in df_station.columns if not c.startswith('LEGENDA_') and c not in ['LATITUDINE', 'LONGITUDINE', 'COORDINATEGOOGLE']])
+    
+    # SOSTITUISCI LA TUA VECCHIA LISTA 'defaults' CON QUESTA NUOVA LISTA
+    defaults = [
+        'DATA',
+        'STAZIONE',
+        'TOTALE_PIOGGIA_GIORNO',
+        'PIOGGE_RESIDUA_ZOFFOLI',
+        'TEMPERATURA_MEDIANA',
+        'TEMPERATURA_MEDIANA_MINIMA',
+        'SBALZO_TERMICO',
+        'UMIDITA_DEL_GIORNO',
+        'UMIDITA_MEDIA_7GG',
+        'VENTO',
+        'SBALZO_TERMICO_MIGLIORE',
+        'PORCINI_CALDO_NOTE',
+        'DURATA_RANGE_CALDO',
+        'CONTEGGIO_GG_RACCOLTA_CALDO',
+        'PORCINI_FREDDO_NOTE',
+        'DURATA_RANGE_FREDDO',
+        'BOOST',
+        'CONTEGGIO_GG_RACCOLTA_FREDDO'
+    ]
+    
+    sel_cols = st.multiselect("Seleziona colonne:", options=all_cols, default=[c for c in defaults if c in all_cols])
+    
+    if sel_cols:
+        # Ordina il dataframe in base all'ordine della lista defaults per la visualizzazione
+        display_df = df_station[sel_cols].sort_values('DATA', ascending=False)
+        
+        # Riordina le colonne per rispettare il tuo ordine personalizzato
+        ordered_cols = [col for col in defaults if col in display_df.columns]
+        st.dataframe(display_df[ordered_cols])
+    else:
+        st.info("Seleziona almeno una colonna.")
 
 # SOSTITUISCI SOLO LA TUA FUNZIONE main() CON QUESTA VERSIONE FINALE
 
@@ -356,3 +386,4 @@ def main():
 # Questa riga rimane, è fondamentale per far partire l'app
 if __name__ == "__main__":
     main()
+
