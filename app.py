@@ -34,7 +34,7 @@ def check_password():
 @st.cache_resource
 def get_view_counter(): return {"count": 0}
 
-@st.cache_data(ttl=3600)
+
 # Sostituisci la tua funzione load_and_prepare_data con questa
 @st.cache_data(ttl=3600)
 def load_and_prepare_data(url: str):
@@ -329,12 +329,33 @@ def display_station_detail(df, station_name):
             st.dataframe(df_station[sel_cols].sort_values('DATA', ascending=False))
         else: st.info("Seleziona almeno una colonna.")
 
+
 def main():
     st.set_page_config(page_title="Mappa Funghi Protetta", layout="wide")
     st.title("💧 Analisi Meteo Funghi – by Bobo 🍄")
     query_params = st.query_params
+
+    # <<< CORREZIONE: Rimuovi il decoratore duplicato sopra la funzione load_and_prepare_data
+    # Assicurati che la funzione load_and_prepare_data abbia UN SOLO @st.cache_data(ttl=3600)
     df, last_loaded_ts = load_and_prepare_data(SHEET_URL)
-    if df is None or df.empty: st.warning("Dati non disponibili o caricamento fallito."); st.stop()
+    
+    if df is None or df.empty: 
+        st.warning("Dati non disponibili o caricamento fallito."); 
+        st.stop()
+    
+    # --- INIZIO CODICE DI DEBUG ---
+    # Queste righe ci aiuteranno a capire quale data sta leggendo il programma.
+    # Una volta risolto, puoi cancellarle o commentarle.
+    with st.expander("🔍 Informazioni di Debug (clicca per aprire)"):
+        df_valid_dates = df.dropna(subset=['DATA'])
+        if not df_valid_dates.empty:
+            min_date_found = df_valid_dates['DATA'].min().strftime('%d/%m/%Y')
+            max_date_found = df_valid_dates['DATA'].max().strftime('%d/%m/%Y')
+            st.info(f"Data minima trovata nel file: **{min_date_found}**")
+            st.error(f"Data massima trovata nel file: **{max_date_found}** <-- Questa è la data che il programma usa per la mappa riepilogativa.")
+        else:
+            st.warning("Nessuna data valida trovata nel dataframe dopo il caricamento.")
+    # --- FINE CODICE DI DEBUG ---
     
     if "station" in query_params:
         display_station_detail(df, query_params["station"])
@@ -345,11 +366,13 @@ def main():
                 counter["count"] += 1
                 st.session_state['just_logged_in'] = False
             mode = st.radio("Seleziona la modalità:", ["Mappa Riepilogativa", "Analisi di Periodo"], horizontal=True)
-            if mode == "Mappa Riepilogativa": display_main_map(df, last_loaded_ts)
-            elif mode == "Analisi di Periodo": display_period_analysis(df)
+            if mode == "Mappa Riepilogativa": 
+                display_main_map(df, last_loaded_ts)
+            elif mode == "Analisi di Periodo": 
+                display_period_analysis(df)
 
-if __name__ == "__main__":
-    main()
+
+
 
 
 
