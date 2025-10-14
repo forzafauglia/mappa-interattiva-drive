@@ -314,45 +314,45 @@ def display_station_detail(df, station_name):
             st.dataframe(df_station[sel_cols].sort_values('DATA', ascending=False))
         else: st.info("Seleziona almeno una colonna.")
 
+# SOSTITUISCI SOLO LA TUA FUNZIONE main() CON QUESTA VERSIONE FINALE
+
 def main():
     st.set_page_config(page_title="Mappa Funghi Protetta", layout="wide")
     st.title("💧 Analisi Meteo Funghi – by Bobo 🍄")
     query_params = st.query_params
 
+    # Carichiamo i dati
     df, last_loaded_ts = load_and_prepare_data(SHEET_URL)
     
+    # Controllo di sicurezza fondamentale
     if df is None or df.empty: 
         st.error("Caricamento dati fallito o il file è vuoto. Controlla il Google Sheet.")
         st.stop()
     
-    with st.expander("🔍 Informazioni di Debug (clicca per aprire)"):
-        df_valid_dates = df.dropna(subset=['DATA'])
-        if not df_valid_dates.empty:
-            min_date_found = df_valid_dates['DATA'].min().strftime('%d/%m/%Y')
-            max_date_found = df_valid_dates['DATA'].max().strftime('%d/%m/%Y')
-            st.info(f"Data MINIMA trovata nel file: **{min_date_found}**")
-            st.error(f"Data MASSIMA trovata nel file: **{max_date_found}**")
-            st.write("La mappa riepilogativa usa la data MASSIMA.")
-        else:
-            st.warning("ATTENZIONE: Nessuna data valida è stata trovata nel file.")
+    # --- IL BLOCCO DI DEBUG È STATO RIMOSSO ---
 
+    # Logica per decidere cosa mostrare
     if "station" in query_params:
         display_station_detail(df, query_params["station"])
     else:
+        # Codice per il login e la scelta della modalità
         if check_password():
             counter = get_view_counter()
             if st.session_state.get('just_logged_in', False): 
                 counter["count"] += 1
                 st.session_state['just_logged_in'] = False
             
-            mode = st.radio("Seleziona la modalità:", ["Mappa Riepilogativa", "Analisi di Periodo"], horizontal=True)
+            mode = st.radio(
+                "Seleziona la modalità:", 
+                ["Mappa Riepilogativa", "Analisi di Periodo"], 
+                horizontal=True
+            )
 
             if mode == "Mappa Riepilogativa": 
                 display_main_map(df, last_loaded_ts)
             elif mode == "Analisi di Periodo": 
                 display_period_analysis(df)
 
+# Questa riga rimane, è fondamentale per far partire l'app
 if __name__ == "__main__":
     main()
-
-
