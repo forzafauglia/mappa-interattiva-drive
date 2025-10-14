@@ -99,19 +99,16 @@ def create_map(tile, location=[43.8, 11.0], zoom=8):
     return folium.Map(location=location, zoom_start=zoom, tiles=tile)
 
 # Sostituisci la tua funzione display_main_map con questa
+
 def display_main_map(df, last_loaded_ts):
     st.header("🗺️ Mappa Riepilogativa (Situazione Attuale)")
     
-    # <<< MODIFICA 3: Logica per trovare la data più recente resa più sicura e robusta.
-    # Prima ci assicuriamo di lavorare solo con le righe che hanno una data valida.
     df_with_valid_dates = df.dropna(subset=['DATA'])
     
     if df_with_valid_dates.empty:
-        st.error("ERRORE: Non sono state trovate righe con date valide nel file. Impossibile visualizzare la mappa riepilogativa.")
-        st.warning("Controlla la colonna 'DATA' nel tuo Google Sheet e assicurati che contenga date formattate correttamente (es. GG/MM/AAAA).")
-        return # Interrompe l'esecuzione della funzione
+        st.error("ERRORE: Non sono state trovate righe con date valide nel file.")
+        return
 
-    # Ora che siamo sicuri di avere date valide, troviamo la più recente.
     last_date = df_with_valid_dates['DATA'].max()
     df_latest = df_with_valid_dates[df_with_valid_dates['DATA'] == last_date].copy()
     st.info(f"Visualizzazione dati aggiornati al: **{last_date.strftime('%d/%m/%Y')}**")
@@ -121,23 +118,65 @@ def display_main_map(df, last_loaded_ts):
     st.sidebar.markdown("---"); st.sidebar.subheader("Statistiche")
     counter = get_view_counter(); st.sidebar.info(f"Visite totali: **{counter['count']}**")
     if last_loaded_ts: st.sidebar.info(f"App aggiornata il: **{last_loaded_ts}**")
-    if 'LEGENDA_ULTIMO_AGGIORNAMENTO_SHEET' in df_latest.columns and not df_latest['LEGENDA_ULTIMO_AGGIORNAMENTO_SHEET'].empty:
-        st.sidebar.info(f"Sheet aggiornato il: **{df_latest['LEGENDA_ULTIMO_AGGIORNAMENTO_SHEET'].iloc[0]}**")
+    
+    # Usiamo il try-except perché se df_latest è vuoto, .iloc[0] darebbe errore
+    try:
+        if 'LEGENDA_ULTIMO_AGGIORNAMENTO_SHEET' in df_latest.columns and not df_latest['LEGENDA_ULTIMO_AGGIORNAMENTO_SHEET'].empty:
+            st.sidebar.info(f"Sheet aggiornato il: **{df_latest['LEGENDA_ULTIMO_AGGIORNAMENTO_SHEET'].iloc[0]}**")
+    except IndexError:
+        pass # Non fa nulla se non trova l'aggiornamento sheet
+
     st.sidebar.markdown("---"); st.sidebar.subheader("Filtri Dati Standard")
+    
     df_filtrato = df_latest.copy()
+
+    # <<< INIZIO DELLA CORREZIONE DEL BUG >>>
     for colonna in COLONNE_FILTRO_RIEPILOGO:
-        if colonna in df_filtrato.columns and not df_filtrato[colonna].dropna().empty:
-            max_val = float(df_filtrato[colonna].max()); slider_label = colonna.replace('LEGENDA_', '').replace('_', ' ').title()
-            val_selezionato = st.sidebar.slider(f"Filtra per {slider_label}", 0.0, max_val, (0.0, max_val))
-            df_filtrato = df_filtrato[df_filtrato[colonna].fillna(0).between(val_selezionato[0], val_selezionato[1])]
+        # Controlliamo che la colonna esista e abbia dati numerici validi IN TUTTO IL DATASET
+        if colonna in df.columns and pd.to_numeric(df[colonna], errors='coerce').notna().any():
+            
+            # Calcoliamo il valore massimo sull'INTERO dataframe (df), non solo su df_latest!
+            # Questo ci dà un range di filtro sensato.
+            # Usiamo .dropna() per ignorare i valori non numerici nel calcolo del max.
+            max_val = float(pd.to_numeric(df[colonna], errors='coerce').max())
+            min_val = float(pd.to_numeric(df[colonna], errors='coerce').min())
+
+            slider_label = colonna.replace('LEGENDA_', '').replace('_', ' ').title()
+            
+            # Impostiamo il range di default dello slider per includere TUTTI i valori possibili.
+            val_selezionato = st.sidebar.slider(
+                f"Filtra per {slider_label}", 
+                min_value=min_val, 
+                max_value=max_val, 
+                value=(min_val, max_val) # Default: seleziona tutto
+            )
+            
+            # Applichiamo il filtro solo se la colonna esiste nel dataframe dell'ultimo giorno
+            if colonna in df_filtrato.columns:
+                # Convertiamo la colonna in numerico per il confronto, riempiendo i NaN con 0
+                col_numerica = pd.to_numeric(df_filtrato[colonna], errors='coerce').fillna(0)
+                df_filtrato = df_filtrato[col_numerica.between(val_selezionato[0], val_selezionato[1])]
+
+    # Gestione Filtri Sbalzo Termico (logica simile)
     st.sidebar.markdown("---"); st.sidebar.subheader("Filtri Sbalzo Termico")
     for sbalzo_col, suffisso in [("LEGENDA_SBALZO_NUMERICO_MIGLIORE", "Migliore"), ("LEGENDA_SBALZO_NUMERICO_SECONDO", "Secondo")]:
-        if sbalzo_col in df_filtrato.columns and not df_filtrato[sbalzo_col].dropna().empty:
-            max_val = float(df_filtrato[sbalzo_col].max()); val_selezionato = st.sidebar.slider(f"Sbalzo Termico {suffisso}", 0.0, max_val, (0.0, max_val))
-            df_filtrato = df_filtrato[df_filtrato[sbalzo_col].fillna(0).between(val_selezionato[0], val_selezionato[1])]
+        if sbalzo_col in df.columns and pd.to_numeric(df[sbalzo_col], errors='coerce').notna().any():
+            max_val = float(pd.to_numeric(df[sbalzo_col], errors='coerce').max())
+            min_val = float(pd.to_numeric(df[sbalzo_col], errors='coerce').min())
+            val_selezionato = st.sidebar.slider(
+                f"Sbalzo Termico {suffisso}", 
+                min_value=min_val, 
+                max_value=max_val, 
+                value=(min_val, max_val)
+            )
+            if sbalzo_col in df_filtrato.columns:
+                col_numerica = pd.to_numeric(df_filtrato[sbalzo_col], errors='coerce').fillna(0)
+                df_filtrato = df_filtrato[col_numerica.between(val_selezionato[0], val_selezionato[1])]
+    # <<< FINE DELLA CORREZIONE DEL BUG >>>
+
+
     st.sidebar.markdown("---"); st.sidebar.success(f"Visualizzati {len(df_filtrato)} marker sulla mappa.")
     
-    # Qui il dropna è corretto perché vogliamo disegnare sulla mappa solo punti con coordinate valide.
     df_mappa = df_filtrato.dropna(subset=['LATITUDINE', 'LONGITUDINE']).copy()
     
     mappa = create_map(map_tile); Geocoder(collapsed=True, placeholder='Cerca un luogo...', add_marker=True).add_to(mappa)
@@ -165,6 +204,7 @@ def display_main_map(df, last_loaded_ts):
             colore = get_marker_color(row.get('LEGENDA_COLORE', 'gray')); popup_html = create_popup_html(row)
             folium.CircleMarker(location=[lat, lon], radius=6, color=colore, fill=True, fill_color=colore, fill_opacity=0.9, popup=folium.Popup(popup_html, max_width=380)).add_to(mappa)
         except (ValueError, TypeError): continue
+        
     folium_static(mappa, width=1000, height=700)
 
 
@@ -385,6 +425,7 @@ def main():
 # Dice al programma di iniziare eseguendo la funzione main()
 if __name__ == "__main__":
     main()
+
 
 
 
