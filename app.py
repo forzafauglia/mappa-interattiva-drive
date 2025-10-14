@@ -35,13 +35,14 @@ def check_password():
 def get_view_counter(): return {"count": 0}
 
 @st.cache_data(ttl=3600)
+# Sostituisci la tua funzione load_and_prepare_data con questa
+@st.cache_data(ttl=3600)
 def load_and_prepare_data(url: str):
     load_timestamp = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
     try:
         df = pd.read_csv(url, na_values=["#N/D", "#N/A"], dtype=str, header=0, skiprows=[1])
         if isinstance(df.columns, pd.MultiIndex): df.columns = ['_'.join(map(str, col)).strip() for col in df.columns.values]
         
-        # --- FIX DEFINITIVO PER LA PULIZIA DEI NOMI COLONNA ---
         cleaned_cols = {}
         for col in df.columns:
             temp_name = str(col).replace('[', '').replace(']', '').replace('(', '').replace(')', '').replace("'", "")
@@ -65,20 +66,17 @@ def load_and_prepare_data(url: str):
         for col in df.columns:
             col_clean = col.strip().upper()
 
+            # <<< MODIFICA 1: Parsing della data reso più robusto e semplice
             if col_clean == 'DATA':
-                # Prova formato ISO
-                df[col] = pd.to_datetime(df[col], errors='coerce', format='%Y-%m-%d')
-                # Se tutte le date risultano NaT, prova formato europeo
-                if df[col].isna().all():
-                    df[col] = pd.to_datetime(df[col], errors='coerce', dayfirst=True)
+                # Lasciamo che pandas inferisca il formato, privilegiando il formato europeo (giorno/mese/anno).
+                # 'errors=coerce' trasforma qualsiasi valore non convertibile in NaT (Not a Time).
+                df[col] = pd.to_datetime(df[col], dayfirst=True, errors='coerce')
 
             elif col_clean not in TEXT_COLUMNS:
                 df[col] = pd.to_numeric(
                     df[col].astype(str).str.replace(',', '.', regex=False),
                     errors='coerce'
                 )
-
-
         
         temp_cols_to_fill = ['TEMP_MIN', 'TEMP_MAX', 'TEMPERATURA_MEDIANA', 'TEMPERATURA_MEDIANA_MINIMA']
         df_source_temps = df[df['STAZIONE'].str.startswith('TOS', na=False)][['STAZIONE', 'DATA'] + temp_cols_to_fill].copy()
@@ -88,25 +86,35 @@ def load_and_prepare_data(url: str):
         source_cols_to_drop = ['STAZIONE_sorgente'] + [f'{col}_sorgente' for col in temp_cols_to_fill if f'{col}_sorgente' in df_merged.columns]
         df = df_merged.drop(columns=source_cols_to_drop)
         
-        df.dropna(subset=['LONGITUDINE', 'LATITUDINE', 'DATA'], inplace=True, how='any')
+        # <<< MODIFICA 2: Rimuoviamo la riga che eliminava i dati in modo troppo aggressivo.
+        # La gestione dei valori mancanti verrà fatta dove serve, non globalmente.
+        # df.dropna(subset=['LONGITUDINE', 'LATITUDINE', 'DATA'], inplace=True, how='any') # RIGA RIMOSSA
+        
         return df, load_timestamp
     except Exception as e:
         st.error(f"Errore critico durante il caricamento dei dati: {e}"); return None, None
 
+
 def create_map(tile, location=[43.8, 11.0], zoom=8):
     return folium.Map(location=location, zoom_start=zoom, tiles=tile)
 
+# Sostituisci la tua funzione display_main_map con questa
 def display_main_map(df, last_loaded_ts):
     st.header("🗺️ Mappa Riepilogativa (Situazione Attuale)")
-    # Trova la data più recente in modo sicuro
-    last_date = df['DATA'].max()
-    if pd.isna(last_date):
-        # Nessuna data valida trovata → messaggio e fallback
-        st.warning("⚠️ Nessuna data valida trovata nei dati caricati (campo DATA vuoto o non interpretabile).")
-        df_latest = df.copy()
-    else:
-        df_latest = df[df['DATA'] == last_date].copy()
-        st.info(f"Visualizzazione dati aggiornati al: **{last_date.strftime('%d/%m/%Y')}**")
+    
+    # <<< MODIFICA 3: Logica per trovare la data più recente resa più sicura e robusta.
+    # Prima ci assicuriamo di lavorare solo con le righe che hanno una data valida.
+    df_with_valid_dates = df.dropna(subset=['DATA'])
+    
+    if df_with_valid_dates.empty:
+        st.error("ERRORE: Non sono state trovate righe con date valide nel file. Impossibile visualizzare la mappa riepilogativa.")
+        st.warning("Controlla la colonna 'DATA' nel tuo Google Sheet e assicurati che contenga date formattate correttamente (es. GG/MM/AAAA).")
+        return # Interrompe l'esecuzione della funzione
+
+    # Ora che siamo sicuri di avere date valide, troviamo la più recente.
+    last_date = df_with_valid_dates['DATA'].max()
+    df_latest = df_with_valid_dates[df_with_valid_dates['DATA'] == last_date].copy()
+    st.info(f"Visualizzazione dati aggiornati al: **{last_date.strftime('%d/%m/%Y')}**")
 
     st.sidebar.title("Informazioni e Filtri Riepilogo"); st.sidebar.markdown("---")
     map_tile = st.sidebar.selectbox("Tipo di mappa:", ["OpenStreetMap", "CartoDB positron"], key="tile_main")
@@ -128,6 +136,8 @@ def display_main_map(df, last_loaded_ts):
             max_val = float(df_filtrato[sbalzo_col].max()); val_selezionato = st.sidebar.slider(f"Sbalzo Termico {suffisso}", 0.0, max_val, (0.0, max_val))
             df_filtrato = df_filtrato[df_filtrato[sbalzo_col].fillna(0).between(val_selezionato[0], val_selezionato[1])]
     st.sidebar.markdown("---"); st.sidebar.success(f"Visualizzati {len(df_filtrato)} marker sulla mappa.")
+    
+    # Qui il dropna è corretto perché vogliamo disegnare sulla mappa solo punti con coordinate valide.
     df_mappa = df_filtrato.dropna(subset=['LATITUDINE', 'LONGITUDINE']).copy()
     
     mappa = create_map(map_tile); Geocoder(collapsed=True, placeholder='Cerca un luogo...', add_marker=True).add_to(mappa)
@@ -156,6 +166,7 @@ def display_main_map(df, last_loaded_ts):
             folium.CircleMarker(location=[lat, lon], radius=6, color=colore, fill=True, fill_color=colore, fill_opacity=0.9, popup=folium.Popup(popup_html, max_width=380)).add_to(mappa)
         except (ValueError, TypeError): continue
     folium_static(mappa, width=1000, height=700)
+
 
 def display_period_analysis(df):
     st.header("📊 Analisi di Periodo con Dati Aggregati")
@@ -339,6 +350,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
