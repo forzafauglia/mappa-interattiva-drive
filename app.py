@@ -74,6 +74,8 @@ def create_map(tile, location=[43.8, 11.0], zoom=8):
 
 # SOSTITUISCI SOLO QUESTA FUNZIONE NEL TUO CODICE
 
+# SOSTITUISCI SOLO QUESTA FUNZIONE NEL TUO CODICE
+
 def display_main_map(df, last_loaded_ts):
     st.header("🗺️ Mappa Riepilogativa (Situazione Attuale)")
     
@@ -108,7 +110,8 @@ def display_main_map(df, last_loaded_ts):
             val_selezionato = st.sidebar.slider(f"Filtra per {slider_label}", min_value=0.0, max_value=max_val if max_val > 0 else 1.0, value=(0.0, max_val))
             if colonna in df_filtrato.columns:
                 col_numerica = pd.to_numeric(df_filtrato[colonna], errors='coerce').fillna(0)
-                df_filtrato = df_filtrato[col_numerica.between(val_sezionato[0], val_selezionato[1])]
+                # <<< QUI LA CORREZIONE: da val_sezionato a val_selezionato >>>
+                df_filtrato = df_filtrato[col_numerica.between(val_selezionato[0], val_selezionato[1])]
 
     st.sidebar.markdown("---"); st.sidebar.subheader("Filtri Sbalzo Termico")
     for sbalzo_col, suffisso in [("LEGENDA_SBALZO_NUMERICO_MIGLIORE", "Migliore"), ("LEGENDA_SBALZO_NUMERICO_SECONDO", "Secondo")]:
@@ -117,6 +120,7 @@ def display_main_map(df, last_loaded_ts):
             val_selezionato = st.sidebar.slider(f"Sbalzo Termico {suffisso}", min_value=0.0, max_value=max_val if max_val > 0 else 1.0, value=(0.0, max_val))
             if sbalzo_col in df_filtrato.columns:
                 col_numerica = pd.to_numeric(df_filtrato[sbalzo_col], errors='coerce').fillna(0)
+                # <<< QUI LA CORREZIONE: da val_sezionato a val_selezionato >>>
                 df_filtrato = df_filtrato[col_numerica.between(val_selezionato[0], val_selezionato[1])]
     
     st.sidebar.markdown("---"); st.sidebar.success(f"Visualizzati {len(df_filtrato)} marker sulla mappa.")
@@ -125,12 +129,9 @@ def display_main_map(df, last_loaded_ts):
     mappa = create_map(map_tile)
     Geocoder(collapsed=True, placeholder='Cerca un luogo...', add_marker=True).add_to(mappa)
 
-    # <<< INIZIO CORREZIONE POPUP >>>
-    # Definiamo le funzioni come nel tuo codice originale
-    
     def create_popup_html(row):
         html = """<style>.popup-container{font-family:Arial,sans-serif;font-size:13px;max-height:350px;overflow-y:auto;overflow-x:hidden}h4{margin-top:12px;margin-bottom:5px;color:#0057e7;border-bottom:1px solid #ccc;padding-bottom:3px}table{width:100%;border-collapse:collapse;margin-bottom:10px}td{text-align:left;padding:4px;border-bottom:1px solid #eee}td:first-child{font-weight:bold;color:#333;width:65%}td:last-child{color:#555}.btn-container{text-align:center;margin-top:15px;}.btn{background-color:#007bff;color:white;padding:8px 12px;border-radius:5px;text-decoration:none;font-weight:bold;}</style><div class="popup-container">"""
-        groups = {"Info Stazione": ["STAZIONE", "LEGENDA_DESCRIZIONE", "LEGENDA_COMUNE", "LEGENDA_ALTITUDINE"], "Dati Meteo": ["LEGENDA_TEMPERATURA_MEDIANA_MINIMA", "LEGENDA_TEMPERATURA_MEDIANA", "LEGENDA_UMIDITA_MEDIA_7GG", "LEGENDA_PIOGGE_RESIDUA", "LEGENDA_TOTALE_PIOGGE_MENSILI"], "Analisi Base": ["LEGENDA_MEDIA_PORCINI_CALDO_BASE", "LEGENDA_MEDIA_PORCINI_CALDO_BOOST", "LEGENDA_DURATA_RANGE_CALDO", "LEGENDA_CONTEGGIO_GG_ALLA_RACCOLTA_CALDO", "LEGENDA_MEDIA_PORCINI_FREDDO_BASE", "LEGENDA_MEDIA_PORCINI_FREDDO_BOOST", "LEGENDA_DURATA_RANGE_FREDDO", "LEGENDA_CONTEGGIO_GG_ALLA_RACCOLTA_FREDDO"], "Analisi Sbalzo Migliore": ["LEGENDA_SBALZO_TERMICO_MIGLIORE", "LEGENDA_MEDIA_PORCINI_CALDO_ST_MIGLIORE", "LEGENDA_MEDIA_BOOST_CALDO_ST_MIGLIORE", "LEGENDA_GG_ST_MIGLIORE_CALDO", "LEGENDA_MEDIA_PORCINI_FREDDO_ST_MIGLIORE", "LEGENDA_MEDIA_BOOST_FREDDO_ST_MIGLIORE", "LEGENDA_GG_ST_MIGLIORE_FREDDO"], "Analisi Sbalzo Secondo": ["LEGENDA_SBALZO_TERMICO_SECONDO", "LEGENDA_MEDIA_PORCINI_CALDO_ST_SECONDO", "LEGENDA_MEDIA_BOOST_CALDO_ST_SECONDO", "LEGENDA_GG_ST_SECONDO_CALDO", "LEGENDA_MEDIA_PORCINI_FREDDO_ST_SECONDO", "LEGENDA_MEDIA_BOOST_FREDDO_ST_SECONDO", "LEGENDA_GG_ST_SECONDO_FREDDO"]}
+        groups = {"Info Stazione": ["STAZIONE", "LEGENDA_DESCRIZIONE", "LEGENDA_COMUNE", "LEGENDA_ALTITUDINE"], "Dati Meteo": ["LEGENDA_TEMPERATURA_MEDIANA_MINIMA", "LEGENDA_TEMPERATURA_MEDIANA", "LEGENDA_UMIDITA_MEDIA_7GG", "LEGENDA_PIOGGE_RESIDUA", "LEGENDA_TOTALE_PIOGGE_MENSILI"], "Analisi Base": ["LEGENDA_MEDIA_PORCINI_CALDO_BASE", "LEGENDA_MEDIA_PORCINI_CALDO_BOOST", "LEGENDA_DURATA_RANGE_CALDO", "LEGENDA_CONTEGGIO_GG_ALLA_RACCOLTA_CALDO", "LEGENDA_MEDIA_PORCINI_FREDDO_BASE", "LEGENDA_MEDIA_PORCINI_FREDDO_BOOST", "LEGENDA_DURATA_RANGE_FREDDO", "LEGENDA_CONTEGGIO_GG_ALLA_RACCOLTA_FREDDO"], "Analisi Sbalzo Migliore": ["LEGENDA_SBALZO_TERMICO_MIGLIORE", "LEGENDA_MEDIA_PORCINI_CALDO_ST_MIGLIORE", "LEGENDA_MEDIA_BOOST_CALDO_ST_MIGLIORE", "LEGENDA_GG_ST_MIGLIORE_CALDO", "LEGENDA_MEDIA_PORCINI_FREDDO_ST_MIGLIORE", "LEGENDA_MEDIA_BOOST_FREDDO_ST_MIGLIORE", "LEGENDA_GG_ST_MIGLIORE_FREDDO"], "Analisi Sbalzo Secondo": ["LEGENDA_SBALZO_TERMICO_SECONDO", "LEGENDA_MEDIA_PORCINI_CALDO_ST_SECONDO", "LEGENDA_MEDIA_BOOST_CALDO_ST_SECONDO", "LEGENDA_GG_ST_SECONDO_CALDO", "LEGENDA_MEDIA_PORCini_FREDDO_ST_SECONDO", "LEGENDA_MEDIA_BOOST_FREDDO_ST_SECONDO", "LEGENDA_GG_ST_SECONDO_FREDDO"]}
         for title, columns in groups.items():
             table_html = "<table>"; has_content = False
             for col in columns:
@@ -146,15 +147,12 @@ def display_main_map(df, last_loaded_ts):
     def get_marker_color(val): 
         return {"ROSSO": "red", "GIALLO": "yellow", "ARANCIONE": "orange", "VERDE": "green"}.get(str(val).strip().upper(), "gray")
     
-    # Torniamo al ciclo di disegno originale, senza IFrame
     for _, row in df_mappa.iterrows():
         try:
             lat, lon = float(row['LATITUDINE']), float(row['LONGITUDINE'])
             colore = get_marker_color(row.get('LEGENDA_COLORE', 'gray'))
             
             popup_html = create_popup_html(row)
-            # Usiamo direttamente folium.Popup, che gestisce l'HTML nativamente.
-            # Questo risolve sia il link che la doppia scrollbar.
             popup = folium.Popup(popup_html, max_width=380)
 
             folium.CircleMarker(
@@ -170,8 +168,6 @@ def display_main_map(df, last_loaded_ts):
         except (ValueError, TypeError):
             continue
             
-    # <<< FINE CORREZIONE POPUP >>>
-        
     folium_static(mappa, width=1000, height=700)
 
 def display_period_analysis(df):
@@ -358,4 +354,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
