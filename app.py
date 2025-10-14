@@ -57,7 +57,8 @@ def load_and_prepare_data(url: str):
         
         TEXT_COLUMNS = ['STAZIONE', 'LEGENDA_DESCRIZIONE', 'LEGENDA_COMUNE', 'LEGENDA_COLORE', 'LEGENDA_ULTIMO_AGGIORNAMENTO_SHEET', 'LEGENDA_SBALZO_TERMICO_MIGLIORE', 'LEGENDA_SBALZO_TERMICO_SECONDO', 'PORCINI_CALDO_NOTE', 'PORCINI_FREDDO_NOTE', 'SBALZO_TERMICO_MIGLIORE', '2°_SBALZO_TERMICO_MIGLIORE', 'LEGENDA']
         for col in df.columns:
-            if col == 'DATA': df[col] = pd.to_datetime(df[col], errors='coerce', dayfirst=True)
+            if col == 'DATA':
+            df[col] = pd.to_datetime(df[col], errors='coerce', format='%Y-%m-%d')
             elif col not in TEXT_COLUMNS: df[col] = pd.to_numeric(df[col].astype(str).str.replace(',', '.', regex=False), errors='coerce')
         
         temp_cols_to_fill = ['TEMP_MIN', 'TEMP_MAX', 'TEMPERATURA_MEDIANA', 'TEMPERATURA_MEDIANA_MINIMA']
@@ -311,6 +312,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
