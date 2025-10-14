@@ -93,8 +93,16 @@ def create_map(tile, location=[43.8, 11.0], zoom=8):
 
 def display_main_map(df, last_loaded_ts):
     st.header("🗺️ Mappa Riepilogativa (Situazione Attuale)")
-    last_date = df['DATA'].max(); df_latest = df[df['DATA'] == last_date].copy()
-    st.info(f"Visualizzazione dati aggiornati al: **{last_date.strftime('%d/%m/%Y')}**")
+    # Trova la data più recente in modo sicuro
+    last_date = df['DATA'].max()
+    if pd.isna(last_date):
+        # Nessuna data valida trovata → messaggio e fallback
+        st.warning("⚠️ Nessuna data valida trovata nei dati caricati (campo DATA vuoto o non interpretabile).")
+        df_latest = df.copy()
+    else:
+        df_latest = df[df['DATA'] == last_date].copy()
+        st.info(f"Visualizzazione dati aggiornati al: **{last_date.strftime('%d/%m/%Y')}**")
+
     st.sidebar.title("Informazioni e Filtri Riepilogo"); st.sidebar.markdown("---")
     map_tile = st.sidebar.selectbox("Tipo di mappa:", ["OpenStreetMap", "CartoDB positron"], key="tile_main")
     st.sidebar.markdown("---"); st.sidebar.subheader("Statistiche")
@@ -326,6 +334,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
