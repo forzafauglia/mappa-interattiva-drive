@@ -263,39 +263,55 @@ def add_sbalzo_line(fig, df_data, sbalzo_col_name, label):
                 fig.add_annotation(x=sbalzo_date, y=1.05, xref="x", yref="paper", text=f"{label} ({sbalzo_val})", showarrow=False, xanchor="left", font=dict(family="Arial", size=12, color="black"))
             except ValueError: continue
 
+# SOSTITUISCI L'INTERA FUNZIONE display_station_detail CON QUESTA
+
 def display_station_detail(df, station_name):
-    if st.button("⬅️ Torna alla Mappa Riepilogativa"): st.query_params.clear()
+    if st.button("⬅️ Torna alla Mappa Riepilogativa"): 
+        st.query_params.clear()
+
     st.header(f"📈 Storico Dettagliato: {station_name}")
     df_station = df[df['STAZIONE'] == station_name].sort_values('DATA').copy()
-    if df_station.empty: st.error("Dati non trovati."); return
+    
+    if df_station.empty: 
+        st.error("Dati non trovati per la stazione selezionata.")
+        return
 
-    if not df_station.empty: end_date_default = df_station['DATA'].max(); start_date_default = end_date_default - pd.Timedelta(days=39)
-    else: end_date_default = datetime.now(); start_date_default = end_date_default - pd.Timedelta(days=39)
+    # Impostazioni dei grafici
+    if not df_station.empty: 
+        end_date_default = df_station['DATA'].max()
+        start_date_default = end_date_default - pd.Timedelta(days=39)
+    else: 
+        end_date_default = datetime.now()
+        start_date_default = end_date_default - pd.Timedelta(days=39)
+    
     config_chart = {'toImageButtonOptions': {'format': 'png', 'scale': 2, 'filename': f'grafico_{station_name}'}, 'displaylogo': False}
 
+    # --- Grafico 1: Precipitazioni ---
     st.subheader("Andamento Precipitazioni Giornaliere")
     fig1 = go.Figure(go.Bar(x=df_station['DATA'], y=df_station['TOTALE_PIOGGIA_GIORNO']))
     max_y_rain = df_station['TOTALE_PIOGGIA_GIORNO'].max() * 1.1 if not df_station['TOTALE_PIOGGIA_GIORNO'].empty else 100
     fig1.update_layout(title="Pioggia Giornaliera", xaxis_title="Data", yaxis_title="mm", xaxis_range=[start_date_default, end_date_default], yaxis_range=[0, max_y_rain])
     st.plotly_chart(fig1, use_container_width=True, config=config_chart)
 
+    # --- Grafico 2: Temperatura vs Piogge Residue ---
     st.subheader("Correlazione Temperatura Mediana e Piogge Residue")
     cols_needed = ['PIOGGE_RESIDUA_ZOFFOLI', 'TEMPERATURA_MEDIANA']
-    if all(c in df_station.columns for c in cols_needed) and not df_station[cols_needed].dropna().empty:
+    if all(c in df_station.columns for c in cols_needed) and not df_station.dropna(subset=cols_needed).empty:
         df_chart = df_station.dropna(subset=cols_needed)
-        if not df_chart.empty:
-            fig2 = make_subplots(specs=[[{"secondary_y": True}]])
-            fig2.add_trace(go.Scatter(x=df_chart['DATA'], y=df_chart['PIOGGE_RESIDUA_ZOFFOLI'], name='Piogge Residua', mode='lines', line=dict(color='blue')), secondary_y=False)
-            fig2.add_trace(go.Scatter(x=df_chart['DATA'], y=df_chart['TEMPERATURA_MEDIANA'], name='Temperatura Mediana', mode='lines', line=dict(color='red')), secondary_y=True)
-            max_y_rain_res = df_chart['PIOGGE_RESIDUA_ZOFFOLI'].max() * 1.1; min_y_rain_res = df_chart['PIOGGE_RESIDUA_ZOFFOLI'].min() * 0.9
-            max_y_temp_med = df_chart['TEMPERATURA_MEDIANA'].max() * 1.1; min_y_temp_med = df_chart['TEMPERATURA_MEDIANA'].min() * 0.9
-            fig2.update_yaxes(title_text="<b>Piogge Residua</b>", range=[min_y_rain_res, max_y_rain_res], secondary_y=False)
-            fig2.update_yaxes(title_text="<b>Temperatura Mediana (°C)</b>", range=[min_y_temp_med, max_y_temp_med], secondary_y=True)
-            fig2.update_layout(title_text="Temp vs Piogge", xaxis_range=[start_date_default, end_date_default])
-            add_sbalzo_line(fig2, df_station, 'SBALZO_TERMICO_MIGLIORE', 'Sbalzo Migliore'); add_sbalzo_line(fig2, df_station, '2°_SBALZO_TERMICO_MIGLIORE', '2° Sbalzo')
-            st.plotly_chart(fig2, use_container_width=True, config=config_chart)
-    else: st.warning("Dati di Piogge Residue o Temperatura Mediana non disponibili per creare il grafico.")
+        fig2 = make_subplots(specs=[[{"secondary_y": True}]])
+        fig2.add_trace(go.Scatter(x=df_chart['DATA'], y=df_chart['PIOGGE_RESIDUA_ZOFFOLI'], name='Piogge Residua', mode='lines', line=dict(color='blue')), secondary_y=False)
+        fig2.add_trace(go.Scatter(x=df_chart['DATA'], y=df_chart['TEMPERATURA_MEDIANA'], name='Temperatura Mediana', mode='lines', line=dict(color='red')), secondary_y=True)
+        max_y_rain_res = df_chart['PIOGGE_RESIDUA_ZOFFOLI'].max() * 1.1; min_y_rain_res = df_chart['PIOGGE_RESIDUA_ZOFFOLI'].min() * 0.9
+        max_y_temp_med = df_chart['TEMPERATURA_MEDIANA'].max() * 1.1; min_y_temp_med = df_chart['TEMPERATURA_MEDIANA'].min() * 0.9
+        fig2.update_yaxes(title_text="<b>Piogge Residua</b>", range=[min_y_rain_res, max_y_rain_res], secondary_y=False)
+        fig2.update_yaxes(title_text="<b>Temperatura Mediana (°C)</b>", range=[min_y_temp_med, max_y_temp_med], secondary_y=True)
+        fig2.update_layout(title_text="Temp vs Piogge", xaxis_range=[start_date_default, end_date_default])
+        add_sbalzo_line(fig2, df_station, 'SBALZO_TERMICO_MIGLIORE', 'Sbalzo Migliore'); add_sbalzo_line(fig2, df_station, '2°_SBALZO_TERMICO_MIGLIORE', '2° Sbalzo')
+        st.plotly_chart(fig2, use_container_width=True, config=config_chart)
+    else: 
+        st.warning("Dati di Piogge Residue o Temperatura Mediana non disponibili per creare il grafico.")
 
+    # --- Grafico 3: Temperature Min/Max ---
     st.subheader("Andamento Temperature Minime e Massime")
     fig3 = go.Figure()
     fig3.add_trace(go.Scatter(x=df_station['DATA'], y=df_station['TEMP_MAX'], name='Temp Max', line=dict(color='orangered')))
@@ -305,46 +321,55 @@ def display_station_detail(df, station_name):
     fig3.update_layout(title="Escursione Termica Giornaliera", xaxis_title="Data", yaxis_title="°C", xaxis_range=[start_date_default, end_date_default], yaxis_range=[min_y_temp, max_y_temp])
     st.plotly_chart(fig3, use_container_width=True, config=config_chart)
 
-# All'interno della funzione display_station_detail:
-
-with st.expander("Visualizza tabella dati storici completi"):
-    all_cols = sorted([c for c in df_station.columns if not c.startswith('LEGENDA_') and c not in ['LATITUDINE', 'LONGITUDINE', 'COORDINATEGOOGLE']])
-    
-    # SOSTITUISCI LA TUA VECCHIA LISTA 'defaults' CON QUESTA NUOVA LISTA
-    defaults = [
-        'DATA',
-        'STAZIONE',
-        'TOTALE_PIOGGIA_GIORNO',
-        'PIOGGE_RESIDUA_ZOFFOLI',
-        'TEMPERATURA_MEDIANA',
-        'TEMPERATURA_MEDIANA_MINIMA',
-        'SBALZO_TERMICO',
-        'UMIDITA_DEL_GIORNO',
-        'UMIDITA_MEDIA_7GG',
-        'VENTO',
-        'SBALZO_TERMICO_MIGLIORE',
-        'PORCINI_CALDO_NOTE',
-        'DURATA_RANGE_CALDO',
-        'CONTEGGIO_GG_RACCOLTA_CALDO',
-        'PORCINI_FREDDO_NOTE',
-        'DURATA_RANGE_FREDDO',
-        'BOOST',
-        'CONTEGGIO_GG_RACCOLTA_FREDDO'
-    ]
-    
-    sel_cols = st.multiselect("Seleziona colonne:", options=all_cols, default=[c for c in defaults if c in all_cols])
-    
-    if sel_cols:
-        # Ordina il dataframe in base all'ordine della lista defaults per la visualizzazione
-        display_df = df_station[sel_cols].sort_values('DATA', ascending=False)
+    # --- INIZIO BLOCCO EXPANDER CORRETTO ---
+    with st.expander("Visualizza tabella dati storici completi"):
+        all_cols = sorted([c for c in df_station.columns if not c.startswith('LEGENDA_') and c not in ['LATITUDINE', 'LONGITUDINE', 'COORDINATEGOOGLE']])
         
-        # Riordina le colonne per rispettare il tuo ordine personalizzato
-        ordered_cols = [col for col in defaults if col in display_df.columns]
-        st.dataframe(display_df[ordered_cols])
-    else:
-        st.info("Seleziona almeno una colonna.")
+        # Lista delle colonne di default con i nuovi nomi corretti e nell'ordine desiderato
+        defaults = [
+            'DATA',
+            'STAZIONE',
+            'TOTALE_PIOGGIA_GIORNO',
+            'PIOGGE_RESIDUA_ZOFFOLI',
+            'TEMPERATURA_MEDIANA',
+            'TEMPERATURA_MEDIANA_MINIMA',
+            'SBALZO_TERMICO',
+            'UMIDITA_DEL_GIORNO',
+            'UMIDITA_MEDIA_7GG',
+            'VENTO',
+            'SBALZO_TERMICO_MIGLIORE',
+            'PORCINI_CALDO_NOTE',
+            'DURATA_RANGE_CALDO',
+            'CONTEGGIO_GG_RACCOLTA_CALDO',
+            'PORCINI_FREDDO_NOTE',
+            'DURATA_RANGE_FREDDO',
+            'BOOST',
+            'CONTEGGIO_GG_RACCOLTA_FREDDO'
+        ]
+        
+        sel_cols = st.multiselect(
+            "Seleziona colonne:", 
+            options=all_cols, 
+            default=[c for c in defaults if c in all_cols]
+        )
+        
+        if sel_cols:
+            # Ordina il dataframe per data (più recente in alto)
+            display_df = df_station[sel_cols].sort_values('DATA', ascending=False)
+            
+            # Riordina le colonne per rispettare il tuo ordine personalizzato
+            ordered_cols = [col for col in defaults if col in sel_cols]
+            
+            # Aggiungi le altre colonne selezionate dall'utente che non erano nei default
+            for col in sel_cols:
+                if col not in ordered_cols:
+                    ordered_cols.append(col)
+            
+            st.markdown("""<style>div[data-testid="stDataFrame"] { overflow-x: auto; }</style>""", unsafe_allow_html=True)
+            st.dataframe(display_df[ordered_cols])
+        else:
+            st.info("Seleziona almeno una colonna.")
 
-# SOSTITUISCI SOLO LA TUA FUNZIONE main() CON QUESTA VERSIONE FINALE
 
 def main():
     st.set_page_config(page_title="Mappa Funghi Protetta", layout="wide")
@@ -386,4 +411,5 @@ def main():
 # Questa riga rimane, è fondamentale per far partire l'app
 if __name__ == "__main__":
     main()
+
 
